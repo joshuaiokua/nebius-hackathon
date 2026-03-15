@@ -1,24 +1,24 @@
-"""Simulation interface — abstract boundary between orchestrator and MuJoCo.
-
-Real MuJoCo implementation for Unitree G1 humanoid robot.
-"""
+"""Simulation interface — real MuJoCo G1 implementation."""
 
 import asyncio
 import base64
 import io
+import os
+
 import mujoco
 import numpy as np
 from PIL import Image
 
+_MODEL_PATH = os.path.join(
+    os.path.dirname(os.path.dirname(__file__)),
+    "mujoco_sims", "unitree_ros", "robots", "g1_description", "g1_23dof.xml",
+)
+
 
 class SimInterface:
-    """Interface to the MuJoCo G1 simulation.
+    """Real MuJoCo interface to the Unitree G1 23-DOF simulation."""
 
-    Provides state extraction, camera rendering, command execution,
-    and scene XML injection for the Unitree G1 23-DOF humanoid.
-    """
-
-    def __init__(self, model_path: str = "mujoco_sims/unitree_ros/robots/g1_description/g1_23dof.xml") -> None:
+    def __init__(self, model_path: str = _MODEL_PATH) -> None:
         self.model_path = model_path
         self.model = mujoco.MjModel.from_xml_path(model_path)
         self.data = mujoco.MjData(self.model)
@@ -27,11 +27,7 @@ class SimInterface:
         mujoco.mj_step(self.model, self.data)
 
     async def get_state(self) -> dict:
-        """Return current robot state from the simulation.
-
-        Returns dict with: time, qpos, qvel, position, orientation,
-        velocity, angular_vel, stability, battery, joint_positions.
-        """
+        """Return current robot state from the real simulation."""
         return {
             "time": float(self.data.time),
             "qpos": self.data.qpos.tolist(),
@@ -46,10 +42,7 @@ class SimInterface:
         }
 
     async def get_camera_frame(self) -> str:
-        """Return a base64-encoded camera frame from the simulation.
-
-        Uses offscreen rendering for headless operation.
-        """
+        """Render the scene offscreen and return as base64 JPEG."""
         self.renderer.update_scene(self.data)
         frame = self.renderer.render()
         img = Image.fromarray(frame)
@@ -58,15 +51,7 @@ class SimInterface:
         return base64.b64encode(buf.getvalue()).decode()
 
     async def send_command(self, action: str, params: dict) -> dict:
-        """Send a control command to the simulation.
-
-        Args:
-            action: Action name (e.g. 'walk_forward', 'stop', 'wave').
-            params: Action parameters (e.g. joint targets, duration).
-
-        Returns:
-            Result dict with status and new state snapshot.
-        """
+        """Send joint control targets to the sim and step forward."""
         targets = params.get("targets", [0.0] * self.model.nu)
         steps = params.get("duration_steps", 100)
         for _ in range(steps):
@@ -80,35 +65,26 @@ class SimInterface:
         }
 
     async def inject_scene_xml(self, mjcf_xml: str) -> dict:
-        """Inject new bodies/geoms into the running scene from MJCF XML string.
-
-        This is how SceneBuilder output gets into the sim.
-
-        Rebuilds the entire model with new XML appended to worldbody.
-        """
+        """Inject new bodies/geoms into the scene from MJCF XML string."""
         import xml.etree.ElementTree as ET
         import tempfile
 
-        # Load original scene XML
         tree = ET.parse(self.model_path)
         root = tree.getroot()
-        worldbody = root.find('worldbody')
+        worldbody = root.find("worldbody")
 
-        # Parse the new elements and append them
-        # Wrap in a root tag so ET can parse multiple top-level elements
         new_elements = ET.fromstring(f"<wrapper>{mjcf_xml}</wrapper>")
         for elem in new_elements:
             worldbody.append(elem)
 
-        # Write to temp file and reload
-        with tempfile.NamedTemporaryFile(suffix='.xml', mode='w', delete=False) as f:
-            tree.write(f, encoding='unicode')
+        with tempfile.NamedTemporaryFile(suffix=".xml", mode="wb", delete=False) as f:
+            tree.write(f)
             temp_path = f.name
 
-        # Reload model with new scene
         self.model = mujoco.MjModel.from_xml_path(temp_path)
         self.data = mujoco.MjData(self.model)
         self.renderer = mujoco.Renderer(self.model, height=480, width=640)
         mujoco.mj_step(self.model, self.data)
 
-        return {"status": "ok", "message": f"Scene updated with new elements"}
+        os.unlink(temp_path)
+        return {"status": "ok", "message": "Scene updated with new elements"}
