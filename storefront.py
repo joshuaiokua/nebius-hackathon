@@ -4,7 +4,7 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import FastAPI, Query, HTTPException
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, PlainTextResponse
 from pydantic import BaseModel
 
 from templates import render_landing, render_catalog, render_detail, render_purchase
@@ -91,6 +91,15 @@ async def get_part(pid: str) -> dict:
     return item
 
 
+@app.get("/api/v1/parts/{pid}/skill", response_class=PlainTextResponse)
+async def get_part_skill(pid: str) -> str:
+    """Returns the raw YAML skill file for a part."""
+    item = CATALOG_BY_PID.get(pid)
+    if not item:
+        raise HTTPException(404, f"Part {pid} not found")
+    return item.get("skill_yaml", "")
+
+
 class SearchRequest(BaseModel):
     need: str
     power_budget_w: float = 15.0
@@ -143,7 +152,8 @@ async def purchase_part(pid: str, req: PurchaseRequest) -> dict:
 
 @app.get("/", response_class=HTMLResponse)
 async def landing() -> str:
-    return render_landing()
+    capabilities = sorted({item["capability"] for item in CATALOG})
+    return render_landing(catalog_size=len(CATALOG), capability_count=len(capabilities))
 
 
 @app.get("/store", response_class=HTMLResponse)
