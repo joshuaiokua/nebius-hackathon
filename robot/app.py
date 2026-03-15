@@ -66,7 +66,7 @@ def _get_or_create_session(session_id: str | None = None) -> RobotSession:
     ]
     session.messages.append(Message(
         role="system",
-        content="Robot online. Unitree G1 (no legs installed) — assign a task to begin.",
+        content="Unitree G1 online. Base unit ready — no locomotion modules installed.",
         msg_type="status",
     ))
     SESSIONS[session.session_id] = session
@@ -221,32 +221,10 @@ async def _run_task_pipeline(session: RobotSession) -> None:
             role="user",
             content=session.current_task,
         ))
+        await asyncio.sleep(0.5)
 
-        # 2. Acknowledge
-        await _emit(sid, Message(
-            role="robot",
-            content=f"Task received. Analyzing requirements...",
-            msg_type="status",
-        ))
-        await asyncio.sleep(0.8)
-
-        # 3. Show current capabilities
+        # 2. Check capabilities and respond naturally
         cap_names = [c["id"] for c in session.profile.capabilities]
-        await _emit(sid, Message(
-            role="robot",
-            content=f"Current capabilities: {', '.join(cap_names)}",
-            msg_type="status",
-        ))
-        await asyncio.sleep(0.5)
-
-        # 4. Search for recommended parts (gap detection via catalog)
-        session.status = "searching"
-        await _emit(sid, Message(
-            role="robot",
-            content="Searching catalog for required hardware...",
-            msg_type="status",
-        ))
-        await asyncio.sleep(0.5)
 
         recommendations = recommend_for_task(
             task=session.current_task,
@@ -264,8 +242,34 @@ async def _run_task_pipeline(session: RobotSession) -> None:
             session.status = "idle"
             return
 
-        # 5. Show the plan
-        cap_list = [r["capability"] for r in recommendations]
+        # 3. Robot realizes it can't do the task
+        gap_names = [r["capability"] for r in recommendations]
+        gap_descriptions = {
+            "locomotion": "I don't have legs installed. I can't walk without a locomotion system.",
+            "manipulation": "I don't have a gripper. I can't pick anything up without one.",
+            "vision": "I don't have a camera. I can't see without a vision system.",
+            "depth_perception": "I don't have a depth sensor. I can't perceive distances.",
+        }
+        for gap in gap_names:
+            desc = gap_descriptions.get(gap, f"I'm missing the {gap} capability. I can't do this yet.")
+            await _emit(sid, Message(
+                role="robot",
+                content=desc,
+                msg_type="text",
+            ))
+            await asyncio.sleep(0.8)
+
+        # 4. Robot decides to search the marketplace
+        await _emit(sid, Message(
+            role="robot",
+            content="Let me check the RoboStore marketplace for what I need...",
+            msg_type="status",
+        ))
+        session.status = "searching"
+        await asyncio.sleep(1.0)
+
+        # 5. Show what was found
+        cap_list = gap_names
         await _emit(sid, Message(
             role="robot",
             content=f"Found {len(recommendations)} capability gap(s): {', '.join(cap_list)}",
