@@ -12,7 +12,7 @@ from db import (
     init_db, get_all_parts, get_part, get_part_full, get_part_skill_yaml,
     get_capabilities, search_parts, recommend_for_task, DB_PATH,
 )
-from templates import render_landing, render_catalog, render_detail, render_purchase
+from store.templates import render_landing, render_catalog, render_detail, render_purchase
 
 _BASE_DIR = Path(__file__).parent
 
@@ -257,4 +257,4 @@ async def store_purchase(pid: str) -> str:
 if __name__ == "__main__":
     import uvicorn
 
-    uvicorn.run("storefront:app", host="0.0.0.0", port=8000, reload=True)
+    uvicorn.run("store.app:app", host="0.0.0.0", port=8000, reload=True)

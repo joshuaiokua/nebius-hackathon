@@ -16,7 +16,7 @@ from sse_starlette.sse import EventSourceResponse
 
 from db import get_part, get_part_full, recommend_for_task, search_parts, init_db, DB_PATH
 from schemas import RobotProfile
-from robot_templates import render_control_panel
+from robot.templates import render_control_panel
 
 
 # ---------- Session state ----------
@@ -439,4 +439,4 @@ async def control_panel_session(session_id: str):
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run("robot_ui:app", host="0.0.0.0", port=8001, reload=True)
+    uvicorn.run("robot.app:app", host="0.0.0.0", port=8001, reload=True)

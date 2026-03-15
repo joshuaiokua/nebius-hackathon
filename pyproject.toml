@@ -11,3 +11,8 @@ dependencies = [
     "uvicorn[standard]>=0.34",
     "sse-starlette>=3.3.2",
 ]
+
+[project.scripts]
+demo = "orchestrator:main"
+store = "store.app:app"
+robot = "robot.app:app"

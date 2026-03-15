@@ -5,8 +5,8 @@ from pathlib import Path
 import httpx
 import yaml
 
-from agent import detect_gaps, generate_skill_file, ingest_skill
-from catalog import search_and_select_module
+from agent.planner import detect_gaps, generate_skill_file, ingest_skill
+from agent.catalog import search_and_select_module
 from schemas import CapabilityGap, RobotProfile
 
 SKILLS_DIR = Path("skills")

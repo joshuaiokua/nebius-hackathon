@@ -8,7 +8,7 @@ import yaml
 
 _BASE_DIR = Path(__file__).parent
 DB_PATH = _BASE_DIR / "catalog.db"
-CATALOG_JSON = _BASE_DIR / "store_catalog.json"
+CATALOG_JSON = _BASE_DIR / "seed_data" / "store_catalog.json"
 
 
 def _get_conn(db_path: Path = DB_PATH) -> sqlite3.Connection:

@@ -4,7 +4,7 @@ import os
 import httpx
 from dotenv import load_dotenv
 
-from agent import llm_call, _strip_fences
+from agent.planner import llm_call, _strip_fences
 from schemas import CapabilityGap, RobotProfile, SelectedModule
 
 load_dotenv()
