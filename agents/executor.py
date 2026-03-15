@@ -33,86 +33,110 @@ JOINT_NAMES = [
     "right_elbow", "right_hand",
 ]
 
-# Fallback presets with approximate joint angles based on G1 joint ranges.
-# Hip pitch ~0.5 rad for walking, knee ~0.8 rad bent, shoulder ~1.2 rad raised.
+# Multi-phase gait sequences: list of (targets, duration_steps) per phase.
+# Walking alternates left-swing/right-stance ↔ right-swing/left-stance.
+# Each "step" is 2 phases (left step + right step).
+
+def _walk_gait(direction: float = -1.0, num_steps: int = 4) -> list[dict]:
+    """Generate a walking gait: alternating left/right steps.
+
+    direction: -1.0 = forward (hip pitch negative), +1.0 = backward
+    """
+    swing_hip = 0.4 * direction   # swing leg hip pitch
+    stance_hip = 0.15 * direction  # stance leg hip pitch (slight lean)
+    swing_knee = 0.5
+    stance_knee = 0.2
+    swing_ankle = -0.25
+    stance_ankle = -0.1
+    arm_swing = 0.2
+
+    phases = []
+    for i in range(num_steps):
+        if i % 2 == 0:
+            # Left leg swings, right leg stance
+            phases.append({
+                "targets": [
+                    swing_hip, 0.0, 0.0, swing_knee, swing_ankle, 0.0,
+                    stance_hip, 0.0, 0.0, stance_knee, stance_ankle, 0.0,
+                    0.0,
+                    -arm_swing, 0.0, 0.0, -0.15, 0.0,
+                    arm_swing, 0.0, 0.0, -0.15, 0.0,
+                ],
+                "duration_steps": 250,
+            })
+        else:
+            # Right leg swings, left leg stance
+            phases.append({
+                "targets": [
+                    stance_hip, 0.0, 0.0, stance_knee, stance_ankle, 0.0,
+                    swing_hip, 0.0, 0.0, swing_knee, swing_ankle, 0.0,
+                    0.0,
+                    arm_swing, 0.0, 0.0, -0.15, 0.0,
+                    -arm_swing, 0.0, 0.0, -0.15, 0.0,
+                ],
+                "duration_steps": 250,
+            })
+
+    # End with standing
+    phases.append({"targets": list(_ZEROS), "duration_steps": 200})
+    return phases
+
+
+def _turn_gait(direction: float = -1.0, num_steps: int = 3) -> list[dict]:
+    """Generate a turning gait. direction: -1.0 = left, +1.0 = right."""
+    waist = 0.3 * direction
+    phases = []
+    for i in range(num_steps):
+        yaw_l = 0.1 * direction if i % 2 == 0 else -0.05 * direction
+        yaw_r = -0.1 * direction if i % 2 == 0 else 0.05 * direction
+        phases.append({
+            "targets": [
+                -0.15, 0.0, yaw_l, 0.3, -0.1, 0.0,
+                -0.15, 0.0, yaw_r, 0.3, -0.1, 0.0,
+                waist,
+                0.0, 0.0, 0.0, 0.0, 0.0,
+                0.0, 0.0, 0.0, 0.0, 0.0,
+            ],
+            "duration_steps": 200,
+        })
+    phases.append({"targets": list(_ZEROS), "duration_steps": 200})
+    return phases
+
+
+def _wave_sequence() -> list[dict]:
+    """Wave: arm up → wave back and forth → arm down."""
+    base_legs = [0.0] * 13
+    return [
+        {"targets": [*base_legs, 0.0,0.0,0.0,0.0,0.0, -1.0,-0.3,0.0,0.6,0.0], "duration_steps": 250},
+        {"targets": [*base_legs, 0.0,0.0,0.0,0.0,0.0, -1.0,-0.5,0.3,0.8,0.0], "duration_steps": 150},
+        {"targets": [*base_legs, 0.0,0.0,0.0,0.0,0.0, -1.0,-0.1,-0.2,0.4,0.0], "duration_steps": 150},
+        {"targets": [*base_legs, 0.0,0.0,0.0,0.0,0.0, -1.0,-0.5,0.3,0.8,0.0], "duration_steps": 150},
+        {"targets": [*base_legs, 0.0,0.0,0.0,0.0,0.0, -1.0,-0.1,-0.2,0.4,0.0], "duration_steps": 150},
+        {"targets": list(_ZEROS), "duration_steps": 250},
+    ]
+
+
+# Single-pose presets (actions that don't need multi-phase)
 ACTION_TARGETS: dict[str, dict] = {
-    "walk_forward": {
-        "targets": [
-            # Left leg: hip pitch/roll/yaw, knee, ankle pitch/roll — slight forward lean
-            -0.3, 0.0, 0.0, 0.6, -0.3, 0.0,
-            # Right leg (symmetric)
-            -0.3, 0.0, 0.0, 0.6, -0.3, 0.0,
-            # Waist
-            0.0,
-            # Arms: gentle counter-swing
-            0.2, 0.0, 0.0, -0.2, 0.0,
-            -0.2, 0.0, 0.0, -0.2, 0.0,
-        ],
-        "duration_steps": 400,
-    },
-    "walk_backward": {
-        "targets": [
-            0.2, 0.0, 0.0, 0.4, -0.15, 0.0,
-            0.2, 0.0, 0.0, 0.4, -0.15, 0.0,
-            0.0,
-            -0.15, 0.0, 0.0, -0.15, 0.0,
-            0.15, 0.0, 0.0, -0.15, 0.0,
-        ],
-        "duration_steps": 400,
-    },
-    "turn_left": {
-        "targets": [
-            -0.15, 0.05, 0.1, 0.3, -0.1, 0.0,
-            -0.15, -0.05, -0.1, 0.3, -0.1, 0.0,
-            -0.3,
-            0.0, 0.0, 0.0, 0.0, 0.0,
-            0.0, 0.0, 0.0, 0.0, 0.0,
-        ],
-        "duration_steps": 300,
-    },
-    "turn_right": {
-        "targets": [
-            -0.15, -0.05, -0.1, 0.3, -0.1, 0.0,
-            -0.15, 0.05, 0.1, 0.3, -0.1, 0.0,
-            0.3,
-            0.0, 0.0, 0.0, 0.0, 0.0,
-            0.0, 0.0, 0.0, 0.0, 0.0,
-        ],
-        "duration_steps": 300,
-    },
-    "stop": {
-        "targets": list(_ZEROS),
-        "duration_steps": 200,
-    },
-    "stand": {
-        "targets": list(_ZEROS),
-        "duration_steps": 200,
-    },
-    "wave": {
-        "targets": [
-            *_ZEROS[:13],
-            0.0, 0.0, 0.0, 0.0, 0.0,
-            # Right arm: shoulder up, elbow bent — wave gesture
-            -1.0, -0.3, 0.2, 0.6, 0.0,
-        ],
-        "duration_steps": 300,
-    },
+    "stop":  {"targets": list(_ZEROS), "duration_steps": 200},
+    "stand": {"targets": list(_ZEROS), "duration_steps": 200},
     "reach_left": {
-        "targets": [
-            *_ZEROS[:13],
-            0.6, 0.2, 0.0, -0.3, 0.0,
-            0.0, 0.0, 0.0, 0.0, 0.0,
-        ],
+        "targets": [*_ZEROS[:13], 0.6, 0.2, 0.0, -0.3, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
         "duration_steps": 300,
     },
     "reach_right": {
-        "targets": [
-            *_ZEROS[:13],
-            0.0, 0.0, 0.0, 0.0, 0.0,
-            0.6, -0.2, 0.0, -0.3, 0.0,
-        ],
+        "targets": [*_ZEROS[:13], 0.0, 0.0, 0.0, 0.0, 0.0, 0.6, -0.2, 0.0, -0.3, 0.0],
         "duration_steps": 300,
     },
+}
+
+# Multi-phase sequence presets
+SEQUENCE_ACTIONS: dict[str, list[dict]] = {
+    "walk_forward": _walk_gait(direction=-1.0, num_steps=6),
+    "walk_backward": _walk_gait(direction=1.0, num_steps=4),
+    "turn_left": _turn_gait(direction=-1.0, num_steps=4),
+    "turn_right": _turn_gait(direction=1.0, num_steps=4),
+    "wave": _wave_sequence(),
 }
 
 _NL_SYSTEM_PROMPT = """\
@@ -204,41 +228,64 @@ class ExecutorAgent:
     async def execute(self, action_name: str, sim_state: dict) -> dict:
         """Execute an action by sending joint targets to the simulation.
 
-        If action_name matches a preset, use it directly. Otherwise, treat it
-        as a natural language command and use the LLM to generate targets.
-        All targets are safety-clamped before sending to the sim.
+        Checks multi-phase sequences first, then single-pose presets,
+        then falls back to LLM for arbitrary commands.
         """
+        # Multi-phase sequence (walk, turn, wave)
+        sequence = SEQUENCE_ACTIONS.get(action_name)
+        if sequence is not None:
+            results = []
+            for phase in sequence:
+                targets = self._clamp_targets(phase["targets"])
+                r = await self.sim.send_command(action_name, {
+                    "targets": targets,
+                    "duration_steps": phase["duration_steps"],
+                })
+                results.append(r)
+            return {
+                "action": action_name,
+                "phases": len(sequence),
+                "source": "sequence",
+                "result": results[-1],
+            }
+
+        # Single-pose preset
         preset = ACTION_TARGETS.get(action_name)
         if preset is not None:
-            targets = preset["targets"]
+            targets = self._clamp_targets(preset["targets"])
             duration = preset["duration_steps"]
-            source = "preset"
-        else:
-            try:
-                llm_result = await nl_to_joint_targets(action_name, sim_state)
-                targets = llm_result["targets"]
-                duration = llm_result["duration_steps"]
-                source = "llm"
-            except Exception as e:
-                return {
-                    "action": action_name,
-                    "error": f"LLM joint target generation failed: {e}",
-                    "available_presets": list(ACTION_TARGETS.keys()),
-                }
+            result = await self.sim.send_command(action_name, {
+                "targets": targets,
+                "duration_steps": duration,
+            })
+            return {
+                "action": action_name,
+                "targets": targets,
+                "duration_steps": duration,
+                "source": "preset",
+                "result": result,
+            }
 
-        targets = self._clamp_targets(targets)
-        duration = max(200, min(500, duration))
+        # LLM fallback for arbitrary commands
+        try:
+            llm_result = await nl_to_joint_targets(action_name, sim_state)
+            targets = self._clamp_targets(llm_result["targets"])
+            duration = max(200, min(500, llm_result["duration_steps"]))
+        except Exception as e:
+            return {
+                "action": action_name,
+                "error": f"LLM joint target generation failed: {e}",
+                "available_presets": list(ACTION_TARGETS.keys()) + list(SEQUENCE_ACTIONS.keys()),
+            }
 
-        # Return to standing after each action to prevent drift
         result = await self.sim.send_command(action_name, {
             "targets": targets,
             "duration_steps": duration,
         })
-
         return {
             "action": action_name,
             "targets": targets,
             "duration_steps": duration,
-            "source": source,
+            "source": "llm",
             "result": result,
         }

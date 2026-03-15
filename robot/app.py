@@ -515,6 +515,36 @@ async def sim_state():
         return {"error": str(e)}
 
 
+# ---------- Live sim viewer (standalone fullscreen) ----------
+
+
+@app.get("/sim", response_class=HTMLResponse)
+async def sim_viewer():
+    """Fullscreen live MuJoCo viewer — auto-refreshing camera feed."""
+    return """<!DOCTYPE html>
+<html><head><title>G1 Sim View</title>
+<style>
+body { margin:0; background:#000; display:flex; align-items:center; justify-content:center; height:100vh; overflow:hidden; }
+img { max-width:100vw; max-height:100vh; object-fit:contain; }
+#info { position:fixed; top:10px; left:10px; color:#6ee7b7; font:13px 'JetBrains Mono',monospace; background:rgba(0,0,0,0.7); padding:6px 12px; border-radius:6px; }
+</style></head><body>
+<div id="info">SIM VIEW — <span id="fps">0</span> fps | <span id="h">—</span>m</div>
+<img id="cam" src="/api/sim/frame">
+<script>
+const cam=document.getElementById("cam"), fpsEl=document.getElementById("fps"), hEl=document.getElementById("h");
+let fc=0, lt=Date.now();
+function refresh(){
+  const img=new Image(), t=Date.now();
+  img.onload=()=>{cam.src=img.src;fc++;if(t-lt>1000){fpsEl.textContent=fc;fc=0;lt=t;}
+    fetch("/api/sim/state").then(r=>r.json()).then(d=>{hEl.textContent=d.position[2].toFixed(3)}).catch(()=>{});
+    setTimeout(refresh,100);};
+  img.onerror=()=>setTimeout(refresh,500);
+  img.src="/api/sim/frame?t="+t;
+}
+refresh();
+</script></body></html>"""
+
+
 # ---------- HTML pages ----------
 
 

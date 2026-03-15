@@ -766,15 +766,19 @@ let robotStatus = "idle";
 
 // --- SSE Connection ---
 
+let sseRetries = 0;
+
 function connectSSE() {{
   const es = new EventSource(`/api/robot/${{SESSION_ID}}/stream`);
 
   es.addEventListener("text", (e) => {{
+    sseRetries = 0;
     const data = JSON.parse(e.data);
     addMessage(data.role, data.content, data.timestamp);
   }});
 
   es.addEventListener("status", (e) => {{
+    sseRetries = 0;
     const data = JSON.parse(e.data);
     addStatusMessage(data.content, data.timestamp);
     updateRobotState();
@@ -788,9 +792,11 @@ function connectSSE() {{
 
   es.addEventListener("error", (e) => {{
     if (e.data) {{
-      const data = JSON.parse(e.data);
-      addErrorMessage(data.content, data.timestamp);
-      updateRobotState();
+      try {{
+        const data = JSON.parse(e.data);
+        addErrorMessage(data.content, data.timestamp);
+        updateRobotState();
+      }} catch(_) {{}}
     }}
   }});
 
@@ -810,10 +816,14 @@ function connectSSE() {{
     updateRobotState();
   }});
 
-  es.addEventListener("ping", () => {{}});
+  es.addEventListener("ping", () => {{ sseRetries = 0; }});
 
   es.onerror = () => {{
-    setTimeout(connectSSE, 3000);
+    es.close();
+    sseRetries++;
+    if (sseRetries < 5) {{
+      setTimeout(connectSSE, 3000);
+    }}
   }};
 }}
 
@@ -1153,16 +1163,24 @@ cmdInput.addEventListener("keydown", (e) => {{
 
 // Load initial state
 (async () => {{
-  const resp = await fetch(`/api/robot/${{SESSION_ID}}/state`);
-  const state = await resp.json();
-  state.messages.forEach(m => {{
-    if (m.msg_type === "status") addStatusMessage(m.content, m.timestamp);
-    else if (m.msg_type === "error") addErrorMessage(m.content, m.timestamp);
-    else if (m.msg_type === "plan") addPlanMessage(m.content, m.timestamp);
-    else addMessage(m.role, m.content, m.timestamp);
-  }});
-  updateRobotState();
-  connectSSE();
+  try {{
+    const resp = await fetch(`/api/robot/${{SESSION_ID}}/state`);
+    if (resp.ok) {{
+      const state = await resp.json();
+      state.messages.forEach(m => {{
+        if (m.msg_type === "status") addStatusMessage(m.content, m.timestamp);
+        else if (m.msg_type === "error") addErrorMessage(m.content, m.timestamp);
+        else if (m.msg_type === "plan") addPlanMessage(m.content, m.timestamp);
+        else addMessage(m.role, m.content, m.timestamp);
+      }});
+      updateRobotState();
+      connectSSE();
+    }} else {{
+      addStatusMessage("Robot online. Unitree G1 ready — use the SIM bar below to send commands.");
+    }}
+  }} catch(e) {{
+    addStatusMessage("Robot online. Unitree G1 ready — use the SIM bar below to send commands.");
+  }}
 }})();
 </script>
 
