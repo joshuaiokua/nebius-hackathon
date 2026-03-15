@@ -13,7 +13,7 @@ class RobotProfile:
     ])
     capabilities: list[dict] = field(default_factory=lambda: [
         {"id": "bipedal_locomotion", "description": "Bipedal walking/running gaits"},
-        {"id": "29dof", "description": "29 degrees of freedom articulated joints"},
+        {"id": "23dof", "description": "23 degrees of freedom — Legs 12 (3 hip + 1 knee + 2 ankle per leg), Waist 1 (yaw), Arms 10 (3 shoulder + 1 elbow + 1 extra per arm). No wrists or dexterous hands."},
         {"id": "imu", "description": "6-axis IMU for orientation + acceleration"},
         {"id": "stereo_cameras", "description": "Built-in stereo camera pair for depth perception"},
     ])

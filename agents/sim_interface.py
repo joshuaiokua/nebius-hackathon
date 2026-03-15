@@ -15,7 +15,7 @@ class SimInterface:
     mujoco calls — the orchestrator never imports mujoco directly.
     """
 
-    def __init__(self, model_path: str = "mujoco_menagerie/unitree_g1/scene.xml") -> None:
+    def __init__(self, model_path: str = "mujoco_sims/unitree_ros/robots/g1_description/g1_23dof.xml") -> None:
         self.model_path = model_path
         # Stephen: load model/data here
         # self.model = mujoco.MjModel.from_xml_path(model_path)
@@ -35,7 +35,7 @@ class SimInterface:
             "angular_vel": [round(random.uniform(-0.2, 0.2), 3) for _ in range(3)],
             "stability": round(random.uniform(0.7, 1.0), 2),
             "battery": round(random.uniform(60, 100), 1),
-            "joint_positions": [round(random.uniform(-1, 1), 2) for _ in range(29)],
+            "joint_positions": [round(random.uniform(-1, 1), 2) for _ in range(23)],
         }
 
     async def get_camera_frame(self) -> str:

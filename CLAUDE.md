@@ -57,29 +57,33 @@
 ### Setup
 ```bash
 pip install mujoco
-git clone https://github.com/google-deepmind/mujoco_menagerie.git
-# G1 model: mujoco_menagerie/unitree_g1/scene.xml
-# MJX version (GPU/JAX): mujoco_menagerie/unitree_g1/scene_mjx.xml
+# G1 23-DOF model (Stephen's unitree_ros):
+# mujoco_sims/unitree_ros/robots/g1_description/g1_23dof.xml
 ```
 
-### G1 Specs in MuJoCo
-- 29 DOF (degrees of freedom)
+### G1 Specs in MuJoCo (23-DOF variant)
+- 23 DOF (degrees of freedom) — **NOT** the 29-DOF menagerie model
+- Joint breakdown:
+  - **Legs (0-11):** 6 per leg — 3 hip (pitch/roll/yaw) + 1 knee + 2 ankle (pitch/roll)
+  - **Waist (12):** yaw only (1 DOF)
+  - **Arms (13-22):** 5 per arm — 3 shoulder (pitch/roll/yaw) + 1 elbow + 1 extra
+  - No wrists, no dexterous hands
 - `data.qpos` — joint positions (array, length = model.nq)
 - `data.qvel` — joint velocities (array, length = model.nv)
-- `data.ctrl` — control inputs to actuators
+- `data.ctrl` — control inputs to actuators (23 elements)
 - Position actuators on all joints
 
 ### Joint Groups (PD gains from Unitree reference)
 - **Legs (0-11):** Hip KP=150/KD=2, Knee KP=300/KD=4, Ankle KP=40/KD=2
-- **Waist (12-14):** KP=250/KD=5
-- **Arms (15-28):** Shoulders KP=100/KD=2-5, Elbows/Wrists KP=20-40/KD=1-2
+- **Waist (12):** KP=250/KD=5
+- **Arms (13-22):** Shoulders KP=100/KD=2-5, Elbows KP=20-40/KD=1-2
 
 ### State Extraction Pattern
 ```python
 import mujoco
 import numpy as np
 
-model = mujoco.MjModel.from_xml_path("mujoco_menagerie/unitree_g1/scene.xml")
+model = mujoco.MjModel.from_xml_path("mujoco_sims/unitree_ros/robots/g1_description/g1_23dof.xml")
 data = mujoco.MjData(model)
 
 # Step simulation
@@ -112,4 +116,7 @@ frame = renderer.render()  # numpy RGB array
 - `wave` — right shoulder raise + extend
 - `reach_left` / `reach_right` — arm extension
 
-Each action maps to setting `data.ctrl[joint_indices]` to target positions.
+Each action maps to setting `data.ctrl[joint_indices]` to target positions (23 elements).
+
+### SceneBuilder — LLM-Powered Scene Generation
+`agents/scene_builder.py` — takes natural language prompts and generates valid MuJoCo MJCF XML body/geom elements via Nebius LLM. The orchestrator's `scene_command()` method accepts NL like "build a staircase of 10 steps" and sends generated MJCF to SimInterface for injection. Stephen handles the actual XML injection into the running sim.

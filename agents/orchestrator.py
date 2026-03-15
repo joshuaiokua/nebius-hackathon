@@ -13,6 +13,7 @@ from agents.planner import PlannerAgent
 from agents.safety import SafetyAgent
 from agents.executor import ExecutorAgent
 from agents.sim_interface import SimInterface
+from agents.scene_builder import SceneBuilder
 
 # ANSI colors for demo output
 C_SCOUT = "\033[96m"   # cyan
@@ -46,6 +47,7 @@ class AsyncOrchestrator:
         self.planner = PlannerAgent()
         self.safety = SafetyAgent()
         self.executor = ExecutorAgent(self.sim)
+        self.scene_builder = SceneBuilder()
 
         # Shared state
         self._last_scene: str | None = None
@@ -138,6 +140,32 @@ class AsyncOrchestrator:
         revised = await self.planner.plan(scene, state, feedback_task)
         _label(C_PLAN, "PLANNER", f"Revised: {json.dumps(revised, indent=2)[:200]}...")
         return revised
+
+    # ------------------------------------------------------------------
+    # Scene building
+    # ------------------------------------------------------------------
+    async def scene_command(self, prompt: str) -> dict:
+        """Generate MJCF XML from a natural language prompt and send to sim.
+
+        Args:
+            prompt: e.g. 'build a staircase of 10 steps in front of the robot'
+
+        Returns:
+            Dict with 'prompt', 'mjcf_xml', and sim 'result'.
+        """
+        _label(C_ORCH, "SCENE", f"Building: {prompt}")
+        mjcf_xml = await self.scene_builder.build_from_prompt(prompt)
+        _label(C_ORCH, "SCENE", f"Generated {len(mjcf_xml)} chars of MJCF")
+
+        result = await self.sim.send_command("inject_scene", {
+            "mjcf_xml": mjcf_xml,
+        })
+
+        return {
+            "prompt": prompt,
+            "mjcf_xml": mjcf_xml,
+            "result": result,
+        }
 
     # ------------------------------------------------------------------
     # Event-driven loop
