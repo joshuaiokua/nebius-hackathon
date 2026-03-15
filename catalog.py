@@ -49,37 +49,50 @@ async def search_tavily(query: str, max_results: int = 5) -> list[dict]:
         return []
 
 
+_adafruit_cache: list[dict] | None = None
+
+
+async def _fetch_adafruit_catalog() -> list[dict]:
+    """Fetch and cache the full Adafruit product catalog (rate-limited to 5 req/min)."""
+    global _adafruit_cache
+    if _adafruit_cache is not None:
+        return _adafruit_cache
+    async with httpx.AsyncClient(timeout=30) as client:
+        resp = await client.get("https://www.adafruit.com/api/products")
+        resp.raise_for_status()
+        _adafruit_cache = resp.json()  # flat array
+    return _adafruit_cache
+
+
 async def search_adafruit(query: str, limit: int = 5) -> list[dict]:
-    """Search Adafruit's product catalog.
+    """Search Adafruit's product catalog via client-side filtering.
 
     Args:
         query: Search query string.
         limit: Maximum number of results to return.
 
     Returns:
-        List of {name, price, url, pid, description, in_stock} dicts.
+        List of {name, price, url, pid, in_stock} dicts.
     """
     try:
-        async with httpx.AsyncClient(timeout=15) as client:
-            resp = await client.get(
-                "https://www.adafruit.com/api/search",
-                params={"q": query, "limit": limit},
-            )
-            resp.raise_for_status()
-            data = resp.json()
-            products = data.get("products", [])
-            return [
-                {
-                    "name": p.get("name", ""),
-                    "price": float(p.get("price", 0) or 0),
-                    "url": f"https://www.adafruit.com/product/{p.get('id', '')}",
-                    "pid": str(p.get("id", "")),
-                    "description": p.get("description", ""),
-                    "in_stock": p.get("in_stock", False),
-                }
-                for p in products
-            ]
-    except Exception as e:
+        catalog = await _fetch_adafruit_catalog()
+        keywords = query.lower().split()
+        matches = []
+        for p in catalog:
+            name = p.get("product_name", "").lower()
+            if all(kw in name for kw in keywords):
+                in_stock = p.get("product_stock", "0") not in ("0", "-1", "-2", "-3")
+                matches.append({
+                    "name": p.get("product_name", ""),
+                    "price": float(p.get("product_price", 0) or 0),
+                    "url": f"https://www.adafruit.com/product/{p.get('product_id', '')}",
+                    "pid": str(p.get("product_id", "")),
+                    "in_stock": in_stock,
+                })
+            if len(matches) >= limit:
+                break
+        return matches
+    except (httpx.HTTPStatusError, httpx.ConnectError, httpx.TimeoutException) as e:
         print(f"⚠️  Adafruit search failed: {e}")
         return []
 

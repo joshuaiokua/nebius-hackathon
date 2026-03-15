@@ -1,0 +1,21 @@
+skill_id: depth-perception
+hardware: Intel RealSense D435i Depth Camera
+compatibility: [Unitree A1, Ubuntu 22.04, Python 3.10+]
+installation:
+  physical: Mount camera to front_chin mount point using M3 screws, route USB-C cable through cable management to onboard computer
+  software:
+    - pip install pyrealsense2
+    - pip install open3d
+    - ros2 launch realsense2_camera rs_launch.py
+agent_tools:
+  - name: get_depth_image
+    description: Returns depth map as numpy array with distance values in meters
+    entrypoint: skills/depth_perception/get_depth_image.py
+  - name: detect_obstacles
+    description: Returns list of obstacle positions and distances within specified range
+    entrypoint: skills/depth_perception/detect_obstacles.py
+  - name: estimate_object_distance
+    description: Returns distance in meters to object at specified pixel coordinates
+    entrypoint: skills/depth_perception/estimate_object_distance.py
+agent_context_update: >
+  You now have depth perception capabilities through the Intel RealSense D435i camera. You can measure distances to objects up to 10 meters away and generate 3D point clouds for spatial understanding.

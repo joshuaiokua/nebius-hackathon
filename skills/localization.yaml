@@ -1,0 +1,20 @@
+skill_id: ld19-lidar-localization
+hardware: LDROBOT LD19 LiDAR Scanner
+compatibility: [Unitree A1, Ubuntu 22.04, Python 3.10+]
+installation:
+  physical: Mount to front_chin using M3x8 screws, connect USB-C cable to robot's front USB port, ensure 360° clearance for rotating scanner head
+  software:
+    - pip install ldlidar-sdk pyserial numpy
+    - ros2 launch ldlidar_stl_ros2 ld19.launch.py
+agent_tools:
+  - name: scan_environment
+    description: Returns 360° distance measurements and detected obstacles as polar coordinates
+    entrypoint: skills/localization/scan_environment.py
+  - name: localize_position
+    description: Returns current robot position relative to known landmarks using SLAM
+    entrypoint: skills/localization/localize_position.py
+  - name: navigate_to_waypoint
+    description: Plans and executes path to target coordinates using obstacle avoidance
+    entrypoint: skills/localization/navigate_to_waypoint.py
+agent_context_update: >
+  You now have 360° LiDAR sensing with 12-meter range for precise localization and navigation. The LD19 scanner provides real-time obstacle detection and SLAM capabilities for autonomous waypoint navigation and charging station return.

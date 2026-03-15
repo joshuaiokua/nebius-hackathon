@@ -12,12 +12,13 @@ load_dotenv()
 OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY", "")
 
 
-async def llm_call(system: str, user: str) -> str:
+async def llm_call(system: str, user: str, max_tokens: int = 2048) -> str:
     """Make a single LLM call via OpenRouter.
 
     Args:
         system: System prompt.
         user: User message.
+        max_tokens: Maximum tokens in the response.
 
     Returns:
         The model's response text.
@@ -28,14 +29,18 @@ async def llm_call(system: str, user: str) -> str:
             headers={"Authorization": f"Bearer {OPENROUTER_API_KEY}"},
             json={
                 "model": "anthropic/claude-sonnet-4",
+                "max_tokens": max_tokens,
                 "messages": [
                     {"role": "system", "content": system},
                     {"role": "user", "content": user},
                 ],
             },
         )
-        resp.raise_for_status()
-        return resp.json()["choices"][0]["message"]["content"]
+        if resp.status_code != 200:
+            body = resp.text
+            raise RuntimeError(f"OpenRouter API error {resp.status_code}: {body}")
+        data = resp.json()
+        return data["choices"][0]["message"]["content"]
 
 
 def _strip_fences(raw: str) -> str:

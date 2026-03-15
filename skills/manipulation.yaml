@@ -1,0 +1,20 @@
+skill_id: robotiq-2f85-gripper
+hardware: Robotiq 2F-85 Gripper
+compatibility: [Unitree A1, Ubuntu 22.04, ROS2 Humble, Python 3.10]
+installation:
+  physical: Mount gripper to front_chin using M6 bolts. Connect RS485-USB interface to onboard computer USB port. Route power cable to 12V supply rail.
+  software:
+    - pip install robotiq-2f-gripper-control pymodbus
+    - ros2 launch robotiq_2f_gripper_control robotiq_gripper.launch.py port:=/dev/ttyUSB0
+agent_tools:
+  - name: grip_object
+    description: Closes gripper fingers to specified position (0-255) and returns grasp success status
+    entrypoint: skills/manipulation/grip_object.py
+  - name: release_object
+    description: Opens gripper fingers completely and returns release confirmation
+    entrypoint: skills/manipulation/release_object.py
+  - name: get_gripper_status
+    description: Returns current finger position, force feedback, and object detection status
+    entrypoint: skills/manipulation/get_gripper_status.py
+agent_context_update: >
+  You now have a Robotiq 2F-85 gripper mounted on your front chin for precise manipulation tasks. The gripper can detect object presence through force feedback and adjust grip strength automatically.

@@ -1,0 +1,20 @@
+skill_id: dfrobot-rgbd-tof-perception
+hardware: DFRobot RGB-D 3D ToF Sensor Camera
+compatibility: [Unitree A1, Ubuntu 22.04, ROS2 Humble, Python 3.10]
+installation:
+  physical: Mount sensor to front_chin using M3x8 screws, connect USB cable to front USB port, verify 12W power budget
+  software:
+    - pip install opencv-python open3d numpy pyrealsense2
+    - ros2 launch realsense2_camera rs_launch.py depth_module.profile:=640x480x30 rgb_camera.profile:=640x480x30
+agent_tools:
+  - name: detect_red_objects
+    description: Returns bounding boxes and 3D coordinates of red objects in camera view
+    entrypoint: skills/visual_perception/detect_red_objects.py
+  - name: get_depth_at_point
+    description: Returns distance measurement at specified pixel coordinates
+    entrypoint: skills/visual_perception/get_depth_at_point.py
+  - name: segment_table_objects
+    description: Returns list of objects detected on table surface with positions
+    entrypoint: skills/visual_perception/segment_table_objects.py
+agent_context_update: >
+  RGB-D camera mounted on front chin provides color and depth perception. Can detect red objects, measure distances, and identify items on tables within 5-meter range.
