@@ -465,11 +465,162 @@ body {{
   background: var(--accent-bg);
 }}
 
+/* ---------- Agent panels ---------- */
+
+.agent-dashboard {{
+  display: grid;
+  grid-template-columns: 1.2fr 1fr 1fr;
+  grid-template-rows: 1fr 1fr;
+  gap: 8px;
+  padding: 12px;
+  background: var(--surface);
+  border-top: 1px solid var(--border);
+  min-height: 220px;
+  max-height: 340px;
+}}
+
+.sim-panel {{
+  grid-row: 1 / 3;
+}}
+
+.agent-panel {{
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 10px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+}}
+
+.agent-panel::-webkit-scrollbar {{ width: 4px; }}
+.agent-panel::-webkit-scrollbar-track {{ background: transparent; }}
+.agent-panel::-webkit-scrollbar-thumb {{ background: var(--border); border-radius: 2px; }}
+
+.agent-panel-header {{
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 6px;
+  flex-shrink: 0;
+}}
+
+.agent-dot {{
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}}
+
+.agent-dot.scout {{ background: #22d3ee; }}
+.agent-dot.planner {{ background: #facc15; }}
+.agent-dot.safety {{ background: #4ade80; }}
+.agent-dot.executor {{ background: #60a5fa; }}
+
+.agent-dot.active {{
+  animation: pulse 1s ease infinite;
+}}
+
+@keyframes pulse {{
+  0%, 100% {{ opacity: 1; }}
+  50% {{ opacity: 0.4; }}
+}}
+
+.agent-panel-label {{
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-family: 'JetBrains Mono', monospace;
+}}
+
+.agent-panel-label.scout {{ color: #22d3ee; }}
+.agent-panel-label.planner {{ color: #facc15; }}
+.agent-panel-label.safety {{ color: #4ade80; }}
+.agent-panel-label.executor {{ color: #60a5fa; }}
+
+.agent-log {{
+  flex: 1;
+  font-size: 12px;
+  font-family: 'JetBrains Mono', monospace;
+  color: var(--text-muted);
+  line-height: 1.6;
+  overflow-y: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+}}
+
+.agent-log .entry {{
+  padding: 2px 0;
+  animation: fadeIn 0.15s ease;
+}}
+
+.agent-log .entry.latest {{
+  color: var(--text);
+}}
+
+/* Command bar (below chat, above agent panels) */
+
+.command-bar {{
+  padding: 10px 20px;
+  background: var(--surface);
+  border-top: 1px solid var(--border);
+  display: flex;
+  gap: 10px;
+  flex-shrink: 0;
+  align-items: center;
+}}
+
+.command-bar .label {{
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-dim);
+  font-weight: 600;
+  font-family: 'JetBrains Mono', monospace;
+  white-space: nowrap;
+}}
+
+.command-bar input {{
+  flex: 1;
+  padding: 8px 14px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--text);
+  font-size: 13px;
+  font-family: 'JetBrains Mono', monospace;
+  outline: none;
+  transition: border-color 0.15s;
+}}
+
+.command-bar input:focus {{
+  border-color: var(--purple);
+}}
+
+.command-bar button {{
+  padding: 8px 16px;
+  background: var(--purple);
+  color: #050507;
+  border: none;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  font-family: 'Inter', sans-serif;
+  transition: all 0.15s;
+  white-space: nowrap;
+}}
+
+.command-bar button:hover {{ opacity: 0.9; }}
+.command-bar button:disabled {{ opacity: 0.4; cursor: not-allowed; }}
+
 /* ---------- Responsive ---------- */
 
 @media (max-width: 768px) {{
   .side-panel {{ display: none; }}
   .msg {{ max-width: 95%; }}
+  .agent-dashboard {{ grid-template-columns: 1fr; grid-template-rows: repeat(4, 1fr); }}
 }}
 </style>
 </head>
@@ -494,17 +645,64 @@ body {{
              autocomplete="off">
       <button id="send-btn" onclick="sendTask()">Send Task</button>
     </div>
+    <div class="command-bar">
+      <span class="label">SIM</span>
+      <input type="text" id="cmd-input" placeholder="Direct command... (walk forward, build a wall, wave at me)"
+             autocomplete="off">
+      <button id="cmd-btn" onclick="sendCommand()">Execute</button>
+    </div>
+    <div class="agent-dashboard">
+      <div class="agent-panel sim-panel" id="panel-sim">
+        <div class="agent-panel-header">
+          <div class="agent-dot executor" style="background:#a78bfa;"></div>
+          <span class="agent-panel-label" style="color:#a78bfa;">SIM VIEW</span>
+          <span id="sim-fps" style="margin-left:auto; font-size:10px; color:var(--text-dim); font-family:'JetBrains Mono',monospace;"></span>
+        </div>
+        <div style="flex:1; display:flex; align-items:center; justify-content:center; overflow:hidden; background:#000; border-radius:6px;">
+          <img id="sim-camera" src="/api/sim/frame" alt="MuJoCo G1"
+               style="max-width:100%; max-height:100%; object-fit:contain; image-rendering:auto;">
+        </div>
+      </div>
+      <div class="agent-panel" id="panel-scout">
+        <div class="agent-panel-header">
+          <div class="agent-dot scout" id="dot-scout"></div>
+          <span class="agent-panel-label scout">SCOUT</span>
+        </div>
+        <div class="agent-log" id="log-scout">Waiting...</div>
+      </div>
+      <div class="agent-panel" id="panel-planner">
+        <div class="agent-panel-header">
+          <div class="agent-dot planner" id="dot-planner"></div>
+          <span class="agent-panel-label planner">PLANNER</span>
+        </div>
+        <div class="agent-log" id="log-planner">Waiting...</div>
+      </div>
+      <div class="agent-panel" id="panel-safety">
+        <div class="agent-panel-header">
+          <div class="agent-dot safety" id="dot-safety"></div>
+          <span class="agent-panel-label safety">SAFETY</span>
+        </div>
+        <div class="agent-log" id="log-safety">Waiting...</div>
+      </div>
+      <div class="agent-panel" id="panel-executor">
+        <div class="agent-panel-header">
+          <div class="agent-dot executor" id="dot-executor"></div>
+          <span class="agent-panel-label executor">EXECUTOR</span>
+        </div>
+        <div class="agent-log" id="log-executor">Waiting...</div>
+      </div>
+    </div>
   </div>
 
   <div class="side-panel">
     <div class="side-section">
       <div class="side-title">Robot Profile</div>
       <div class="robot-info">
-        <div><strong>ID:</strong> unitree-a1-sim</div>
-        <div><strong>Platform:</strong> Unitree A1</div>
-        <div><strong>OS:</strong> Ubuntu 22.04 / ROS2</div>
+        <div><strong>ID:</strong> unitree-g1-sim</div>
+        <div><strong>Platform:</strong> Unitree G1</div>
+        <div><strong>DOF:</strong> 23 joints</div>
         <div><strong>Power:</strong> 15W budget</div>
-        <div><strong>USB:</strong> 2 ports</div>
+        <div><strong>Sim:</strong> MuJoCo</div>
       </div>
     </div>
 
@@ -522,19 +720,31 @@ body {{
     </div>
 
     <div class="side-section">
-      <div class="side-title">Example Tasks</div>
+      <div class="side-title">Self-Expanding Tasks</div>
       <div class="example-tasks">
         <button class="example-task" onclick="setTask(this.textContent)">
-          Navigate to the red box on the table, pick it up, and bring it back to the charging station
+          Pick up the red box and bring it to the charging station
         </button>
         <button class="example-task" onclick="setTask(this.textContent)">
-          Patrol the perimeter of the warehouse and report any obstacles
+          Patrol the warehouse perimeter and report obstacles
         </button>
-        <button class="example-task" onclick="setTask(this.textContent)">
-          Find the person speaking and follow them while avoiding furniture
+      </div>
+    </div>
+
+    <div class="side-section">
+      <div class="side-title">Sim Commands</div>
+      <div class="example-tasks">
+        <button class="example-task" onclick="setCmd(this.textContent)">
+          walk forward
         </button>
-        <button class="example-task" onclick="setTask(this.textContent)">
-          Monitor room temperature and air quality, alert if hazardous
+        <button class="example-task" onclick="setCmd(this.textContent)">
+          build a wall 2 meters ahead
+        </button>
+        <button class="example-task" onclick="setCmd(this.textContent)">
+          wave at me
+        </button>
+        <button class="example-task" onclick="setCmd(this.textContent)">
+          build stairs then walk up
         </button>
       </div>
     </div>
@@ -746,6 +956,11 @@ function setTask(text) {{
   taskInput.focus();
 }}
 
+function setCmd(text) {{
+  cmdInput.value = text.trim();
+  cmdInput.focus();
+}}
+
 // --- State sync ---
 
 async function updateRobotState() {{
@@ -798,10 +1013,142 @@ function scrollToBottom() {{
   messagesEl.scrollTop = messagesEl.scrollHeight;
 }}
 
+// --- Multi-agent command execution ---
+
+const cmdInput = document.getElementById("cmd-input");
+const cmdBtn = document.getElementById("cmd-btn");
+
+const agentLogs = {{
+  SCOUT: document.getElementById("log-scout"),
+  PLANNER: document.getElementById("log-planner"),
+  SAFETY: document.getElementById("log-safety"),
+  EXECUTOR: document.getElementById("log-executor"),
+}};
+const agentDots = {{
+  SCOUT: document.getElementById("dot-scout"),
+  PLANNER: document.getElementById("dot-planner"),
+  SAFETY: document.getElementById("dot-safety"),
+  EXECUTOR: document.getElementById("dot-executor"),
+}};
+
+function appendAgentLog(agent, message) {{
+  const logEl = agentLogs[agent];
+  if (!logEl) return;
+
+  // Dim previous entries
+  const prev = logEl.querySelectorAll(".entry.latest");
+  prev.forEach(el => el.classList.remove("latest"));
+
+  const entry = document.createElement("div");
+  entry.className = "entry latest";
+  entry.textContent = message;
+  logEl.appendChild(entry);
+  logEl.scrollTop = logEl.scrollHeight;
+
+  // Activate dot
+  const dot = agentDots[agent];
+  if (dot) {{
+    dot.classList.add("active");
+    setTimeout(() => dot.classList.remove("active"), 2000);
+  }}
+}}
+
+function clearAgentLogs() {{
+  Object.values(agentLogs).forEach(el => {{ el.innerHTML = ""; }});
+}}
+
+async function sendCommand() {{
+  const text = cmdInput.value.trim();
+  if (!text) return;
+
+  cmdInput.value = "";
+  cmdBtn.disabled = true;
+  clearAgentLogs();
+
+  // Also show in chat
+  addMessage("user", text);
+
+  const encodedText = encodeURIComponent(text);
+  const es = new EventSource(`/api/command/stream?text=${{encodedText}}`);
+
+  es.addEventListener("agent", (e) => {{
+    try {{
+      const data = JSON.parse(e.data);
+      const agent = data.agent;
+      const msg = data.message;
+
+      if (agent === "DONE") {{
+        es.close();
+        cmdBtn.disabled = false;
+        addStatusMessage("Command complete.");
+        return;
+      }}
+      if (agent === "ERROR") {{
+        es.close();
+        cmdBtn.disabled = false;
+        addErrorMessage("Pipeline error: " + msg);
+        return;
+      }}
+
+      // Route to the right panel
+      const panelAgent = agent.toUpperCase();
+      if (agentLogs[panelAgent]) {{
+        appendAgentLog(panelAgent, msg);
+      }}
+
+      // Also show ORCHESTRATOR, SCENE, EXPAND, COMMAND messages in chat
+      if (["ORCHESTRATOR", "SCENE", "EXPAND", "COMMAND"].includes(panelAgent)) {{
+        addStatusMessage(`[${{agent}}] ${{msg}}`);
+      }}
+    }} catch (err) {{
+      // ignore parse errors
+    }}
+  }});
+
+  es.onerror = () => {{
+    es.close();
+    cmdBtn.disabled = false;
+  }};
+}}
+
+// --- Live sim camera feed ---
+
+const simCamera = document.getElementById("sim-camera");
+const simFps = document.getElementById("sim-fps");
+let frameCount = 0;
+let lastFpsTime = Date.now();
+
+function refreshSimFrame() {{
+  const img = new Image();
+  const ts = Date.now();
+  img.onload = () => {{
+    simCamera.src = img.src;
+    frameCount++;
+    const elapsed = ts - lastFpsTime;
+    if (elapsed > 2000) {{
+      const fps = Math.round((frameCount / elapsed) * 1000);
+      simFps.textContent = fps + " fps";
+      frameCount = 0;
+      lastFpsTime = ts;
+    }}
+    setTimeout(refreshSimFrame, 200);
+  }};
+  img.onerror = () => {{
+    setTimeout(refreshSimFrame, 1000);
+  }};
+  img.src = "/api/sim/frame?t=" + ts;
+}}
+
+refreshSimFrame();
+
 // --- Init ---
 
 taskInput.addEventListener("keydown", (e) => {{
   if (e.key === "Enter" && !sendBtn.disabled) sendTask();
+}});
+
+cmdInput.addEventListener("keydown", (e) => {{
+  if (e.key === "Enter" && !cmdBtn.disabled) sendCommand();
 }});
 
 // Load initial state

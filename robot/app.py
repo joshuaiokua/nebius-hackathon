@@ -61,7 +61,7 @@ def _get_or_create_session(session_id: str | None = None) -> RobotSession:
     session = RobotSession()
     session.messages.append(Message(
         role="system",
-        content="Robot online. Unitree A1 ready — assign a task to begin.",
+        content="Robot online. Unitree G1 ready — assign a task to begin.",
         msg_type="status",
     ))
     SESSIONS[session.session_id] = session
@@ -484,6 +484,33 @@ async def stream_command(request: Request, text: str):
                 yield {"event": "ping", "data": ""}
 
     return EventSourceResponse(generate())
+
+
+# ---------- Live sim camera feed ----------
+
+
+@app.get("/api/sim/frame")
+async def sim_frame():
+    """Return the current MuJoCo camera frame as a JPEG image."""
+    from fastapi.responses import Response
+
+    try:
+        b64 = await _orchestrator.sim.get_camera_frame()
+        import base64
+        img_bytes = base64.b64decode(b64)
+        return Response(content=img_bytes, media_type="image/jpeg")
+    except Exception as e:
+        return Response(content=str(e), status_code=500)
+
+
+@app.get("/api/sim/state")
+async def sim_state():
+    """Return the current MuJoCo sim state as JSON."""
+    try:
+        state = await _orchestrator.sim.get_state()
+        return state
+    except Exception as e:
+        return {"error": str(e)}
 
 
 # ---------- HTML pages ----------

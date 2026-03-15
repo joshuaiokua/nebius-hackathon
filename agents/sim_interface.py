@@ -51,7 +51,17 @@ class SimInterface:
         return base64.b64encode(buf.getvalue()).decode()
 
     async def send_command(self, action: str, params: dict) -> dict:
-        """Send joint control targets to the sim and step forward."""
+        """Route commands to the appropriate handler.
+
+        - 'inject_scene': delegates to inject_scene_xml()
+        - Everything else: joint control targets → step sim
+        """
+        if action == "inject_scene":
+            mjcf_xml = params.get("mjcf_xml", "")
+            if not mjcf_xml:
+                return {"status": "error", "message": "No mjcf_xml provided"}
+            return await self.inject_scene_xml(mjcf_xml)
+
         targets = params.get("targets", [0.0] * self.model.nu)
         steps = params.get("duration_steps", 100)
         for _ in range(steps):
