@@ -77,7 +77,6 @@ class SimInterface:
     async def inject_scene_xml(self, mjcf_xml: str) -> dict:
         """Inject new bodies/geoms into the scene from MJCF XML string."""
         import xml.etree.ElementTree as ET
-        import tempfile
 
         tree = ET.parse(self.model_path)
         root = tree.getroot()
@@ -87,14 +86,17 @@ class SimInterface:
         for elem in new_elements:
             worldbody.append(elem)
 
-        with tempfile.NamedTemporaryFile(suffix=".xml", mode="wb", delete=False) as f:
-            tree.write(f)
-            temp_path = f.name
+        # Write temp file next to the original model so relative mesh paths resolve
+        model_dir = os.path.dirname(os.path.abspath(self.model_path))
+        temp_path = os.path.join(model_dir, "_scene_tmp.xml")
+        tree.write(temp_path)
 
-        self.model = mujoco.MjModel.from_xml_path(temp_path)
-        self.data = mujoco.MjData(self.model)
-        self.renderer = mujoco.Renderer(self.model, height=480, width=640)
-        mujoco.mj_step(self.model, self.data)
+        try:
+            self.model = mujoco.MjModel.from_xml_path(temp_path)
+            self.data = mujoco.MjData(self.model)
+            self.renderer = mujoco.Renderer(self.model, height=480, width=640)
+            mujoco.mj_step(self.model, self.data)
+        finally:
+            os.unlink(temp_path)
 
-        os.unlink(temp_path)
         return {"status": "ok", "message": "Scene updated with new elements"}
