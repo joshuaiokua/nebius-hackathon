@@ -9,6 +9,7 @@ import asyncio
 import json
 import re
 from collections.abc import Callable, Coroutine
+from pathlib import Path
 from typing import Any
 
 from agents.scout import ScoutAgent
@@ -17,6 +18,13 @@ from agents.safety import SafetyAgent
 from agents.executor import ExecutorAgent
 from agents.sim_interface import SimInterface
 from agents.scene_builder import SceneBuilder
+
+# Self-expanding loop imports
+from agent.planner import detect_gaps, generate_skill_file, ingest_skill
+from agent.catalog import search_and_select_module
+from schemas import CapabilityGap, RobotProfile
+
+SKILLS_DIR = Path("skills")
 
 # Type for event callbacks: async (agent_name, message, metadata) -> None
 EventCallback = Callable[[str, str, dict[str, Any]], Coroutine[Any, Any, None]]
@@ -29,6 +37,7 @@ C_EXEC = "\033[94m"    # blue
 C_ORCH = "\033[95m"    # magenta
 C_ERR = "\033[91m"     # red
 C_CMD = "\033[97m"     # white (user command)
+C_EXPAND = "\033[33m"  # orange/dark yellow — self-expanding loop
 C_RST = "\033[0m"      # reset
 
 # Words that indicate a scene modification vs a movement command
@@ -61,6 +70,7 @@ class AsyncOrchestrator:
         self.safety = SafetyAgent()
         self.executor = ExecutorAgent(self.sim)
         self.scene_builder = SceneBuilder()
+        self.profile = RobotProfile()
 
         # Shared state
         self._last_scene: str | None = None
@@ -76,7 +86,7 @@ class AsyncOrchestrator:
         color_map = {
             "SCOUT": C_SCOUT, "PLANNER": C_PLAN, "SAFETY": C_SAFE,
             "EXECUTOR": C_EXEC, "ORCHESTRATOR": C_ORCH, "SCENE": C_ORCH,
-            "COMMAND": C_CMD, "ERROR": C_ERR,
+            "COMMAND": C_CMD, "ERROR": C_ERR, "EXPAND": C_EXPAND,
         }
         _label(color_map.get(agent, C_RST), agent, message)
         if self._on_event:
@@ -254,6 +264,99 @@ class AsyncOrchestrator:
 
         return results
 
+    # ------------------------------------------------------------------
+    # Self-expanding loop — detect gaps, buy hardware, generate skills
+    # ------------------------------------------------------------------
+    def _plan_has_capability_gap(self, plan: dict) -> bool:
+        """Check if a PLANNER response indicates missing capabilities."""
+        confidence = plan.get("confidence", 1.0)
+        capabilities_needed = plan.get("capabilities_needed", [])
+        return confidence < 0.3 or bool(capabilities_needed)
+
+    async def _handle_capability_gap(self, plan: dict) -> dict:
+        """Run the self-expanding loop: detect gaps → search → buy → generate → install.
+
+        Returns:
+            Dict with expansion results including filled gaps and updated capabilities.
+        """
+        SKILLS_DIR.mkdir(exist_ok=True)
+        capabilities_needed = plan.get("capabilities_needed", [])
+        confidence = plan.get("confidence", 1.0)
+
+        await self._emit("EXPAND", f"Capability gap detected! confidence={confidence:.1f}, "
+                         f"needed={capabilities_needed}")
+        await self._emit("EXPAND", "Starting self-expanding loop...")
+
+        # Step 1: Detect gaps via the planner LLM
+        await self._emit("EXPAND", "Analyzing capability gaps...")
+        # Build a pseudo-task from the capabilities_needed list
+        gap_description = ", ".join(capabilities_needed) if capabilities_needed else "unknown"
+        try:
+            result = await detect_gaps(
+                f"Robot needs these capabilities: {gap_description}",
+                self.profile,
+            )
+        except Exception as e:
+            await self._emit("ERROR", f"Gap detection failed: {e}")
+            return {"status": "gap_detection_failed", "error": str(e)}
+
+        if result["status"] == "executable":
+            await self._emit("EXPAND", "Robot already has the needed capabilities!")
+            return {"status": "already_capable", "result": result}
+
+        gaps: list[CapabilityGap] = result["gaps"]
+        await self._emit("EXPAND", f"Found {len(gaps)} gap(s): "
+                         f"{[g.need for g in gaps]}")
+
+        # Step 2-4: For each gap — search catalog, select module, generate skill, install
+        filled = []
+        for i, gap in enumerate(gaps, 1):
+            await self._emit("EXPAND", f"--- Gap {i}/{len(gaps)}: {gap.need} ({gap.priority}) ---")
+            await self._emit("EXPAND", f"Reason: {gap.reason}")
+
+            # Search & select hardware
+            await self._emit("EXPAND", f"Searching catalogs for '{gap.hardware_category}'...")
+            try:
+                module = await search_and_select_module(gap, self.profile)
+            except Exception as e:
+                await self._emit("ERROR", f"Catalog search failed for {gap.need}: {e}")
+                continue
+            await self._emit("EXPAND", f"Selected: {module.name} (${module.price:.2f})")
+            await self._emit("EXPAND", f"Rationale: {module.rationale}")
+
+            # Generate skill YAML
+            await self._emit("EXPAND", "Generating integration skill...")
+            try:
+                skill_yaml = await generate_skill_file(module, self.profile, gap)
+            except Exception as e:
+                await self._emit("ERROR", f"Skill generation failed for {gap.need}: {e}")
+                continue
+
+            skill_path = SKILLS_DIR / f"{gap.need}.yaml"
+            skill_path.write_text(skill_yaml)
+            await self._emit("EXPAND", f"Saved skill → {skill_path}")
+
+            # Ingest skill into profile
+            try:
+                skill = ingest_skill(skill_yaml, self.profile)
+            except Exception as e:
+                await self._emit("ERROR", f"Skill ingestion failed for {gap.need}: {e}")
+                continue
+
+            tool_names = [t["name"] for t in skill.get("agent_tools", [])]
+            await self._emit("EXPAND", f"Installed: {skill['skill_id']} → tools: {tool_names}")
+            filled.append({"gap": gap.need, "module": module.name, "skill": skill["skill_id"]})
+
+        caps = [c["id"] for c in self.profile.capabilities]
+        await self._emit("EXPAND", f"Self-expansion complete! Capabilities: {caps}")
+
+        return {
+            "status": "expanded",
+            "filled": filled,
+            "total_gaps": len(gaps),
+            "capabilities": caps,
+        }
+
     async def _handle_movement(self, nl_input: str) -> dict:
         """Handle a movement command through PLANNER → SAFETY → EXECUTOR."""
         state = await self.sim.get_state()
@@ -268,6 +371,33 @@ class AsyncOrchestrator:
         await self._emit("PLANNER", "Planning...")
         plan = await self.planner.plan(scene, state, nl_input)
         await self._emit("PLANNER", f"Plan: {json.dumps(plan, indent=2)[:200]}...", {"plan": plan})
+
+        # Check for capability gaps — trigger self-expanding loop if needed
+        if self._plan_has_capability_gap(plan):
+            expand_result = await self._handle_capability_gap(plan)
+            if expand_result["status"] == "expanded" and expand_result["filled"]:
+                # Retry: re-plan with updated capabilities
+                await self._emit("ORCHESTRATOR", "Retrying command with new capabilities...")
+                plan = await self.planner.plan(scene, state, nl_input)
+                await self._emit("PLANNER", f"Retry plan: {json.dumps(plan, indent=2)[:200]}...", {"plan": plan})
+
+                # If still a gap after expansion, give up
+                if self._plan_has_capability_gap(plan):
+                    return {
+                        "type": "movement",
+                        "input": nl_input,
+                        "status": "capability_gap",
+                        "plan": plan,
+                        "expansion": expand_result,
+                    }
+            elif expand_result["status"] != "already_capable":
+                return {
+                    "type": "movement",
+                    "input": nl_input,
+                    "status": "capability_gap",
+                    "plan": plan,
+                    "expansion": expand_result,
+                }
 
         # SAFETY checks the plan
         await self._emit("SAFETY", "Evaluating...")

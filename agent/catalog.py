@@ -131,7 +131,7 @@ async def search_and_select_module(
         '"specs": {"interface": "USB-C", "power_watts": 5, "weight_g": 120}, '
         '"rationale": "..."}\n\n'
         "Selection criteria (in order):\n"
-        "1. Compatible with Unitree A1 / ROS2 Humble\n"
+        "1. Compatible with Unitree G1 / ROS2 Humble\n"
         f"2. Power draw ≤ {profile.power_budget_w}W\n"
         "3. USB interface (USB-A or USB-C preferred)\n"
         "4. Lowest price among suitable options\n"

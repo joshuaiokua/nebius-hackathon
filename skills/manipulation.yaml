@@ -1,6 +1,6 @@
 skill_id: robotiq-2f85-gripper
 hardware: Robotiq 2F-85 Gripper
-compatibility: [Unitree A1, Ubuntu 22.04, ROS2 Humble, Python 3.10]
+compatibility: [Unitree G1, Ubuntu 22.04, ROS2 Humble, Python 3.10]
 installation:
   physical: Mount gripper to front_chin using M6 bolts. Connect RS485-USB interface to onboard computer USB port. Route power cable to 12V supply rail.
   software:

@@ -1,6 +1,6 @@
 skill_id: dfrobot-rgbd-tof-perception
 hardware: DFRobot RGB-D 3D ToF Sensor Camera
-compatibility: [Unitree A1, Ubuntu 22.04, ROS2 Humble, Python 3.10]
+compatibility: [Unitree G1, Ubuntu 22.04, ROS2 Humble, Python 3.10]
 installation:
   physical: Mount sensor to front_chin using M3x8 screws, connect USB cable to front USB port, verify 12W power budget
   software:

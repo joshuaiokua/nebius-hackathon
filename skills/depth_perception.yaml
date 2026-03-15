@@ -1,6 +1,6 @@
 skill_id: depth-perception
 hardware: Intel RealSense D435i Depth Camera
-compatibility: [Unitree A1, Ubuntu 22.04, Python 3.10+]
+compatibility: [Unitree G1, Ubuntu 22.04, Python 3.10+]
 installation:
   physical: Mount camera to front_chin mount point using M3 screws, route USB-C cable through cable management to onboard computer
   software:

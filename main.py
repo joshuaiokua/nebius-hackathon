@@ -20,6 +20,8 @@ C_DIM = "\033[2m"        # dim
 C_BOLD = "\033[1m"       # bold
 C_GREEN = "\033[92m"     # green
 C_RED = "\033[91m"       # red
+C_YELLOW = "\033[93m"    # yellow
+C_ORANGE = "\033[33m"    # orange/dark yellow — self-expanding
 C_RST = "\033[0m"        # reset
 
 BANNER = f"""{C_BOLD}
@@ -75,6 +77,22 @@ async def main() -> None:
                 if concerns:
                     for c in concerns:
                         print(f"  {C_RED}- {c}{C_RST}")
+            elif status == "capability_gap":
+                expansion = result.get("expansion", {})
+                filled = expansion.get("filled", [])
+                if filled:
+                    print(f"\n{C_ORANGE}Self-expansion triggered:{C_RST}")
+                    for f in filled:
+                        print(f"  {C_ORANGE}+ {f['gap']}{C_RST} → "
+                              f"{C_YELLOW}{f['module']}{C_RST} → "
+                              f"{C_GREEN}{f['skill']}{C_RST}")
+                    caps = expansion.get("capabilities", [])
+                    print(f"  {C_DIM}Updated capabilities: {caps}{C_RST}")
+                else:
+                    print(f"\n{C_RED}Capability gap could not be resolved.{C_RST}")
+                    needed = result.get("plan", {}).get("capabilities_needed", [])
+                    if needed:
+                        print(f"  {C_RED}Missing: {needed}{C_RST}")
             else:
                 print(f"\n{C_GREEN}Done.{C_RST}")
         except Exception as e:

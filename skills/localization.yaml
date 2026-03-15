@@ -1,6 +1,6 @@
 skill_id: ld19-lidar-localization
 hardware: LDROBOT LD19 LiDAR Scanner
-compatibility: [Unitree A1, Ubuntu 22.04, Python 3.10+]
+compatibility: [Unitree G1, Ubuntu 22.04, Python 3.10+]
 installation:
   physical: Mount to front_chin using M3x8 screws, connect USB-C cable to robot's front USB port, ensure 360° clearance for rotating scanner head
   software:

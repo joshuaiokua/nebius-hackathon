@@ -18,11 +18,22 @@ class PlannerAgent:
             Plan dict with steps, expected outcomes, and resource requirements.
         """
         system = (
-            "You are a robot planner agent. Given a scene description, the robot's "
-            "current state, and a task, produce a step-by-step action plan.\n\n"
+            "You are a robot planner agent for a Unitree G1 humanoid (23-DOF, bipedal, "
+            "stereo cameras, IMU — NO gripper, NO lidar, NO depth camera unless skills "
+            "have been installed).\n\n"
+            "Given a scene description, the robot's current state, and a task, produce "
+            "a step-by-step action plan.\n\n"
             "Output ONLY valid JSON with this schema:\n"
             '{"steps": [{"action": "...", "params": {...}, "expected_outcome": "..."}], '
-            '"estimated_duration_s": <number>, "confidence": <0.0-1.0>}'
+            '"estimated_duration_s": <number>, "confidence": <0.0-1.0>, '
+            '"capabilities_needed": []}\n\n'
+            "IMPORTANT: If the robot lacks a required capability (no gripper, no depth "
+            "camera, no lidar, no manipulation hardware, etc.), set confidence to 0.0 "
+            "and add a capabilities_needed array listing what is missing. Example:\n"
+            '{"steps": [], "confidence": 0.0, "capabilities_needed": '
+            '["gripper", "depth_camera"], "estimated_duration_s": 0}\n\n'
+            "Only set confidence >= 0.5 if the robot can actually perform the task "
+            "with its current hardware."
         )
         user = (
             f"Task: {task}\n\n"
