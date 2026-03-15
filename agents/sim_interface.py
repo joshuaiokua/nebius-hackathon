@@ -130,7 +130,14 @@ class SimInterface:
             }
 
     def _render_jpeg(self) -> bytes:
-        self.renderer.update_scene(self.data)
+        cam = mujoco.MjvCamera()
+        cam.type = mujoco.mjtCamera.mjCAMERA_TRACKING
+        cam.trackbodyid = mujoco.mj_name2id(self.model, mujoco.mjtObj.mjOBJ_BODY, "pelvis")
+        cam.distance = 3.0
+        cam.azimuth = -135
+        cam.elevation = -20
+        cam.lookat[:] = [0, 0, 0.8]
+        self.renderer.update_scene(self.data, cam)
         frame = self.renderer.render()
         img = Image.fromarray(frame)
         buf = io.BytesIO()
