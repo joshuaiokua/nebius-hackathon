@@ -10,19 +10,87 @@ from schemas import CapabilityGap, RobotProfile, SelectedModule
 load_dotenv()
 
 OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY", "")
+NEBIUS_API_KEY = os.getenv("NEBIUS_API_KEY", "")
+NEBIUS_API_URL = "https://api.studio.nebius.com/v1/chat/completions"
 
 
-async def llm_call(system: str, user: str, max_tokens: int = 2048) -> str:
-    """Make a single LLM call via OpenRouter.
+async def nebius_llm_call(
+    system: str,
+    user: str,
+    max_tokens: int = 2048,
+    model: str = "Qwen/Qwen3-235B-A22B",
+) -> str:
+    """Make a single LLM call via Nebius Token Factory.
 
     Args:
         system: System prompt.
         user: User message.
         max_tokens: Maximum tokens in the response.
+        model: Model identifier on Nebius.
 
     Returns:
         The model's response text.
     """
+    async with httpx.AsyncClient(timeout=60) as client:
+        resp = await client.post(
+            NEBIUS_API_URL,
+            headers={"Authorization": f"Bearer {NEBIUS_API_KEY}"},
+            json={
+                "model": model,
+                "max_tokens": max_tokens,
+                "messages": [
+                    {"role": "system", "content": system},
+                    {"role": "user", "content": user},
+                ],
+            },
+        )
+        if resp.status_code != 200:
+            raise RuntimeError(f"Nebius API error {resp.status_code}: {resp.text}")
+        data = resp.json()
+        return data["choices"][0]["message"]["content"]
+
+
+async def nebius_vision_call(image_b64: str, prompt: str) -> str:
+    """Call Nebius Qwen2-VL-72B vision model with a base64 image.
+
+    Args:
+        image_b64: Base64-encoded image data.
+        prompt: Text prompt describing what to analyze.
+
+    Returns:
+        The model's text description of the image.
+    """
+    async with httpx.AsyncClient(timeout=60) as client:
+        resp = await client.post(
+            NEBIUS_API_URL,
+            headers={"Authorization": f"Bearer {NEBIUS_API_KEY}"},
+            json={
+                "model": "Qwen/Qwen2-VL-72B-Instruct",
+                "max_tokens": 2048,
+                "messages": [
+                    {
+                        "role": "user",
+                        "content": [
+                            {
+                                "type": "image_url",
+                                "image_url": {
+                                    "url": f"data:image/jpeg;base64,{image_b64}"
+                                },
+                            },
+                            {"type": "text", "text": prompt},
+                        ],
+                    }
+                ],
+            },
+        )
+        if resp.status_code != 200:
+            raise RuntimeError(f"Nebius Vision API error {resp.status_code}: {resp.text}")
+        data = resp.json()
+        return data["choices"][0]["message"]["content"]
+
+
+async def _openrouter_llm_call(system: str, user: str, max_tokens: int = 2048) -> str:
+    """Make a single LLM call via OpenRouter (fallback provider)."""
     async with httpx.AsyncClient(timeout=30) as client:
         resp = await client.post(
             "https://openrouter.ai/api/v1/chat/completions",
@@ -37,10 +105,28 @@ async def llm_call(system: str, user: str, max_tokens: int = 2048) -> str:
             },
         )
         if resp.status_code != 200:
-            body = resp.text
-            raise RuntimeError(f"OpenRouter API error {resp.status_code}: {body}")
+            raise RuntimeError(f"OpenRouter API error {resp.status_code}: {resp.text}")
         data = resp.json()
         return data["choices"][0]["message"]["content"]
+
+
+async def llm_call(system: str, user: str, max_tokens: int = 2048) -> str:
+    """Make an LLM call — tries Nebius first, falls back to OpenRouter.
+
+    Args:
+        system: System prompt.
+        user: User message.
+        max_tokens: Maximum tokens in the response.
+
+    Returns:
+        The model's response text.
+    """
+    if NEBIUS_API_KEY:
+        try:
+            return await nebius_llm_call(system, user, max_tokens)
+        except Exception:
+            pass
+    return await _openrouter_llm_call(system, user, max_tokens)
 
 
 def _strip_fences(raw: str) -> str:

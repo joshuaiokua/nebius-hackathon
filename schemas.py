@@ -3,17 +3,19 @@ from dataclasses import dataclass, field
 
 @dataclass
 class RobotProfile:
-    robot_id: str = "unitree-a1-sim"
-    platform: str = "Unitree A1"
+    robot_id: str = "unitree-g1-sim"
+    platform: str = "Unitree G1"
     os: str = "Ubuntu 22.04 / ROS2 Humble"
-    power_budget_w: int = 15
-    usb_ports_available: int = 2
+    power_budget_w: int = 800
+    usb_ports_available: int = 4
     mount_points: list[str] = field(default_factory=lambda: [
-        "front_chin", "back_plate", "left_rail", "right_rail"
+        "head_mount", "chest_plate", "left_wrist", "right_wrist", "backpack"
     ])
     capabilities: list[dict] = field(default_factory=lambda: [
-        {"id": "locomotion", "description": "4-legged walk/trot gaits"},
-        {"id": "imu", "description": "6-axis orientation + acceleration"},
+        {"id": "bipedal_locomotion", "description": "Bipedal walking/running gaits"},
+        {"id": "29dof", "description": "29 degrees of freedom articulated joints"},
+        {"id": "imu", "description": "6-axis IMU for orientation + acceleration"},
+        {"id": "stereo_cameras", "description": "Built-in stereo camera pair for depth perception"},
     ])
 
     def has_capability(self, cap_id: str) -> bool:

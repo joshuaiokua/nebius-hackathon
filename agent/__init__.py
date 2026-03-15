@@ -1,4 +1,11 @@
-from agent.planner import detect_gaps, generate_skill_file, ingest_skill, llm_call
+from agent.planner import (
+    detect_gaps,
+    generate_skill_file,
+    ingest_skill,
+    llm_call,
+    nebius_llm_call,
+    nebius_vision_call,
+)
 from agent.catalog import search_and_select_module, search_tavily, search_adafruit
 
 __all__ = [
@@ -6,6 +13,8 @@ __all__ = [
     "generate_skill_file",
     "ingest_skill",
     "llm_call",
+    "nebius_llm_call",
+    "nebius_vision_call",
     "search_and_select_module",
     "search_tavily",
     "search_adafruit",
