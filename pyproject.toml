@@ -14,5 +14,3 @@ dependencies = [
 
 [project.scripts]
 demo = "orchestrator:main"
-store = "store.app:app"
-robot = "robot.app:app"
