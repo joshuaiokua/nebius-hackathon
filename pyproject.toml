@@ -1,6 +1,7 @@
 [project]
 name = "nebius-hackathon"
 version = "0.1.0"
+description = "Self-expanding robot agent — detects capability gaps, searches hardware catalogs, and installs new skills"
 requires-python = ">=3.11"
 dependencies = [
     "httpx>=0.28",

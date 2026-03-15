@@ -150,7 +150,7 @@ TASKS = [
     "Patrol the perimeter of the warehouse and report any obstacles",
 ]
 
-if __name__ == "__main__":
+def main() -> None:
     import sys
 
     task_index = int(sys.argv[1]) if len(sys.argv) > 1 else 0
@@ -159,3 +159,7 @@ if __name__ == "__main__":
         sys.exit(1)
 
     asyncio.run(run_demo(TASKS[task_index]))
+
+
+if __name__ == "__main__":
+    main()
