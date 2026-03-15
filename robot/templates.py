@@ -559,62 +559,6 @@ body {{
   color: var(--text);
 }}
 
-/* Command bar (below chat, above agent panels) */
-
-.command-bar {{
-  padding: 10px 20px;
-  background: var(--surface);
-  border-top: 1px solid var(--border);
-  display: flex;
-  gap: 10px;
-  flex-shrink: 0;
-  align-items: center;
-}}
-
-.command-bar .label {{
-  font-size: 11px;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  color: var(--text-dim);
-  font-weight: 600;
-  font-family: 'JetBrains Mono', monospace;
-  white-space: nowrap;
-}}
-
-.command-bar input {{
-  flex: 1;
-  padding: 8px 14px;
-  background: var(--surface-2);
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  color: var(--text);
-  font-size: 13px;
-  font-family: 'JetBrains Mono', monospace;
-  outline: none;
-  transition: border-color 0.15s;
-}}
-
-.command-bar input:focus {{
-  border-color: var(--purple);
-}}
-
-.command-bar button {{
-  padding: 8px 16px;
-  background: var(--purple);
-  color: #050507;
-  border: none;
-  border-radius: 8px;
-  font-size: 13px;
-  font-weight: 600;
-  cursor: pointer;
-  font-family: 'Inter', sans-serif;
-  transition: all 0.15s;
-  white-space: nowrap;
-}}
-
-.command-bar button:hover {{ opacity: 0.9; }}
-.command-bar button:disabled {{ opacity: 0.4; cursor: not-allowed; }}
-
 /* ---------- Responsive ---------- */
 
 @media (max-width: 768px) {{
@@ -641,15 +585,9 @@ body {{
   <div class="chat-panel">
     <div class="messages" id="messages"></div>
     <div class="input-bar">
-      <input type="text" id="task-input" placeholder="Assign a task... (e.g. Navigate to the red box and pick it up)"
+      <input type="text" id="task-input" placeholder="Give the robot a command... (e.g. walk forward 5 meters, pick up the red box)"
              autocomplete="off">
-      <button id="send-btn" onclick="sendTask()">Send Task</button>
-    </div>
-    <div class="command-bar">
-      <span class="label">SIM</span>
-      <input type="text" id="cmd-input" placeholder="Direct command... (walk forward, build a wall, wave at me)"
-             autocomplete="off">
-      <button id="cmd-btn" onclick="sendCommand()">Execute</button>
+      <button id="send-btn" onclick="sendUnified()">Send</button>
     </div>
     <div class="agent-dashboard">
       <div class="agent-panel sim-panel" id="panel-sim">
@@ -720,31 +658,19 @@ body {{
     </div>
 
     <div class="side-section">
-      <div class="side-title">Self-Expanding Tasks</div>
+      <div class="side-title">Try These</div>
       <div class="example-tasks">
+        <button class="example-task" onclick="setTask(this.textContent)">
+          Walk forward 5 meters
+        </button>
         <button class="example-task" onclick="setTask(this.textContent)">
           Pick up the red box and bring it to the charging station
         </button>
         <button class="example-task" onclick="setTask(this.textContent)">
           Patrol the warehouse perimeter and report obstacles
         </button>
-      </div>
-    </div>
-
-    <div class="side-section">
-      <div class="side-title">Sim Commands</div>
-      <div class="example-tasks">
-        <button class="example-task" onclick="setCmd(this.textContent)">
-          walk forward
-        </button>
-        <button class="example-task" onclick="setCmd(this.textContent)">
-          build a wall 2 meters ahead
-        </button>
-        <button class="example-task" onclick="setCmd(this.textContent)">
-          wave at me
-        </button>
-        <button class="example-task" onclick="setCmd(this.textContent)">
-          build stairs then walk up
+        <button class="example-task" onclick="setTask(this.textContent)">
+          Build a wall 2 meters ahead
         </button>
       </div>
     </div>
@@ -921,13 +847,16 @@ function addApprovalButtons(meta) {{
 
 // --- Actions ---
 
-async function sendTask() {{
+async function sendUnified() {{
   const task = taskInput.value.trim();
   if (!task) return;
 
   taskInput.value = "";
   sendBtn.disabled = true;
+  clearAgentLogs();
+  addMessage("user", task);
 
+  // Send to task pipeline (self-expanding: gap detect → marketplace → install)
   try {{
     const resp = await fetch(`/api/robot/${{SESSION_ID}}/task`, {{
       method: "POST",
@@ -939,11 +868,37 @@ async function sendTask() {{
       addErrorMessage(err.detail || "Failed to send task");
       sendBtn.disabled = false;
     }}
-    // Messages will come via SSE. Re-enable button when status returns to idle.
   }} catch (e) {{
     addErrorMessage("Connection error: " + e.message);
     sendBtn.disabled = false;
+    return;
   }}
+
+  // Also stream through multi-agent pipeline for the agent dashboard panels
+  const encodedText = encodeURIComponent(task);
+  const es = new EventSource(`/api/command/stream?text=${{encodedText}}`);
+
+  es.addEventListener("agent", (e) => {{
+    try {{
+      const data = JSON.parse(e.data);
+      const agent = data.agent;
+      const msg = data.message;
+
+      if (agent === "DONE" || agent === "ERROR") {{
+        es.close();
+        return;
+      }}
+
+      const panelAgent = agent.toUpperCase();
+      if (agentLogs[panelAgent]) {{
+        appendAgentLog(panelAgent, msg);
+      }}
+    }} catch (err) {{}}
+  }});
+
+  es.onerror = () => {{
+    es.close();
+  }};
 }}
 
 async function respondApproval(pid, approved, rowEl) {{
@@ -964,11 +919,6 @@ async function respondApproval(pid, approved, rowEl) {{
 function setTask(text) {{
   taskInput.value = text.trim();
   taskInput.focus();
-}}
-
-function setCmd(text) {{
-  cmdInput.value = text.trim();
-  cmdInput.focus();
 }}
 
 // --- State sync ---
@@ -1023,10 +973,7 @@ function scrollToBottom() {{
   messagesEl.scrollTop = messagesEl.scrollHeight;
 }}
 
-// --- Multi-agent command execution ---
-
-const cmdInput = document.getElementById("cmd-input");
-const cmdBtn = document.getElementById("cmd-btn");
+// --- Agent dashboard ---
 
 const agentLogs = {{
   SCOUT: document.getElementById("log-scout"),
@@ -1067,60 +1014,6 @@ function clearAgentLogs() {{
   Object.values(agentLogs).forEach(el => {{ el.innerHTML = ""; }});
 }}
 
-async function sendCommand() {{
-  const text = cmdInput.value.trim();
-  if (!text) return;
-
-  cmdInput.value = "";
-  cmdBtn.disabled = true;
-  clearAgentLogs();
-
-  // Also show in chat
-  addMessage("user", text);
-
-  const encodedText = encodeURIComponent(text);
-  const es = new EventSource(`/api/command/stream?text=${{encodedText}}`);
-
-  es.addEventListener("agent", (e) => {{
-    try {{
-      const data = JSON.parse(e.data);
-      const agent = data.agent;
-      const msg = data.message;
-
-      if (agent === "DONE") {{
-        es.close();
-        cmdBtn.disabled = false;
-        addStatusMessage("Command complete.");
-        return;
-      }}
-      if (agent === "ERROR") {{
-        es.close();
-        cmdBtn.disabled = false;
-        addErrorMessage("Pipeline error: " + msg);
-        return;
-      }}
-
-      // Route to the right panel
-      const panelAgent = agent.toUpperCase();
-      if (agentLogs[panelAgent]) {{
-        appendAgentLog(panelAgent, msg);
-      }}
-
-      // Also show ORCHESTRATOR, SCENE, EXPAND, COMMAND messages in chat
-      if (["ORCHESTRATOR", "SCENE", "EXPAND", "COMMAND"].includes(panelAgent)) {{
-        addStatusMessage(`[${{agent}}] ${{msg}}`);
-      }}
-    }} catch (err) {{
-      // ignore parse errors
-    }}
-  }});
-
-  es.onerror = () => {{
-    es.close();
-    cmdBtn.disabled = false;
-  }};
-}}
-
 // --- Live sim camera feed ---
 
 const simCamera = document.getElementById("sim-camera");
@@ -1154,11 +1047,7 @@ refreshSimFrame();
 // --- Init ---
 
 taskInput.addEventListener("keydown", (e) => {{
-  if (e.key === "Enter" && !sendBtn.disabled) sendTask();
-}});
-
-cmdInput.addEventListener("keydown", (e) => {{
-  if (e.key === "Enter" && !cmdBtn.disabled) sendCommand();
+  if (e.key === "Enter" && !sendBtn.disabled) sendUnified();
 }});
 
 // Load initial state
