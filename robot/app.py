@@ -59,9 +59,14 @@ def _get_or_create_session(session_id: str | None = None) -> RobotSession:
     if session_id and session_id in SESSIONS:
         return SESSIONS[session_id]
     session = RobotSession()
+    # Demo mode: start without locomotion so the self-expanding loop triggers
+    session.profile.capabilities = [
+        c for c in session.profile.capabilities
+        if c["id"] not in ("bipedal_locomotion", "locomotion")
+    ]
     session.messages.append(Message(
         role="system",
-        content="Robot online. Unitree G1 ready — assign a task to begin.",
+        content="Robot online. Unitree G1 (no legs installed) — assign a task to begin.",
         msg_type="status",
     ))
     SESSIONS[session.session_id] = session

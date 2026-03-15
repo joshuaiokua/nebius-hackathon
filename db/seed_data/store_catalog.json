@@ -358,5 +358,23 @@
     "tags": ["current", "power", "voltage", "monitoring", "sensor", "battery", "energy", "runtime", "charge"],
     "skill_yaml": "skill_id: ina260-power-monitor\nhardware: Adafruit INA260 High/Low Side Current + Power Sensor\ncompatibility: [Unitree A1, Ubuntu 22.04, Python 3.10+]\ninstallation:\n  physical: Wire inline with main battery supply on back_plate, connect I2C to GPIO header\n  software:\n    - pip install adafruit-circuitpython-ina260\nagent_tools:\n  - name: get_power_status\n    description: Returns current (mA), voltage (V), and power (mW) readings from main battery bus\n    entrypoint: skills/power_monitoring/get_power_status.py\n  - name: estimate_battery_life\n    description: Returns estimated remaining runtime in minutes based on current draw rate\n    entrypoint: skills/power_monitoring/estimate_battery_life.py\nagent_context_update: >\n  You now have power monitoring. Track real-time current draw, voltage, and estimate remaining battery life to plan energy-aware missions.\n",
     "skill_id": "ina260-power-monitor"
+  },
+  {
+    "pid": "G1-LEG-KIT",
+    "name": "Unitree G1 Bipedal Locomotion Kit",
+    "description": "Complete 12-DOF leg actuator system for the Unitree G1 humanoid. Includes 6 joints per leg (hip pitch/roll/yaw, knee, ankle pitch/roll), pre-trained RL walking policy, and PD controllers. Enables walking, running, turning, and dynamic balance.",
+    "price": 4500.00,
+    "url": "https://www.unitree.com/g1",
+    "image_url": "https://cdn-shop.adafruit.com/640x480/4746-00.jpg",
+    "in_stock": true,
+    "manufacturer": "Unitree Robotics",
+    "capability": "locomotion",
+    "interface_type": "CAN Bus",
+    "power_draw_watts": 120.0,
+    "mount_type": "integrated_chassis",
+    "compatible_platforms": ["Unitree G1"],
+    "tags": ["legs", "walking", "locomotion", "bipedal", "gait", "walk", "run", "step", "move", "forward", "backward", "turn", "balance", "humanoid"],
+    "skill_yaml": "skill_id: g1-bipedal-locomotion\nhardware: Unitree G1 Bipedal Locomotion Kit\ncompatibility: [Unitree G1, MuJoCo, Ubuntu 22.04]\ninstallation:\n  physical: Integrated 12-DOF leg assembly — 6 joints per leg (3 hip + knee + 2 ankle). Torque-controlled via CAN bus.\n  software:\n    - pip install torch mujoco\n    - Deploy RL locomotion policy (deploy/g1_policy.pt)\n    - Configure PD gains: hip kp=100 kd=2, knee kp=150 kd=4, ankle kp=40 kd=2\nagent_tools:\n  - name: walk_forward\n    description: Walk forward at specified speed (0.1-1.0 m/s) using trained RL gait policy\n    entrypoint: agents/executor.py\n  - name: walk_backward\n    description: Walk backward at specified speed\n    entrypoint: agents/executor.py\n  - name: turn\n    description: Turn left or right at specified yaw rate (rad/s)\n    entrypoint: agents/executor.py\n  - name: stop\n    description: Come to a balanced standing stop\n    entrypoint: agents/executor.py\nagent_context_update: >\n  You now have bipedal locomotion via a reinforcement-learning-trained gait policy. Use walk_forward(speed), walk_backward(speed), turn(direction, rate), and stop() to move. The RL policy handles balance, gait generation, and dynamic stability automatically.\n",
+    "skill_id": "g1-bipedal-locomotion"
   }
 ]
