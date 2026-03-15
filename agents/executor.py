@@ -16,7 +16,7 @@ from __future__ import annotations
 import json
 
 from agents.sim_interface import SimInterface
-from agent.planner import nebius_llm_call
+from agent.planner import llm_call as nebius_llm_call
 
 # 23 DOF — all zeros is the neutral standing pose
 _ZEROS = [0.0] * 23

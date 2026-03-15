@@ -36,7 +36,7 @@ Stephen handles the actual XML injection into the running sim.
 
 from __future__ import annotations
 
-from agent.planner import nebius_llm_call
+from agent.planner import llm_call as nebius_llm_call
 
 _SYSTEM_PROMPT = """\
 You are a MuJoCo scene generator. Given a natural language description, output ONLY valid MuJoCo MJCF XML body elements.

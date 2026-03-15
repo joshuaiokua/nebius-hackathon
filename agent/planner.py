@@ -51,42 +51,40 @@ async def nebius_llm_call(
 
 
 async def nebius_vision_call(image_b64: str, prompt: str) -> str:
-    """Call Nebius Qwen2-VL-72B vision model with a base64 image.
-
-    Args:
-        image_b64: Base64-encoded image data.
-        prompt: Text prompt describing what to analyze.
-
-    Returns:
-        The model's text description of the image.
-    """
+    """Call vision model — Nebius Qwen2-VL primary, OpenRouter fallback."""
+    if NEBIUS_API_KEY:
+        async with httpx.AsyncClient(timeout=60) as client:
+            resp = await client.post(
+                NEBIUS_API_URL,
+                headers={"Authorization": f"Bearer {NEBIUS_API_KEY}"},
+                json={
+                    "model": "Qwen/Qwen2-VL-72B-Instruct",
+                    "max_tokens": 2048,
+                    "messages": [{"role": "user", "content": [
+                        {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{image_b64}"}},
+                        {"type": "text", "text": prompt},
+                    ]}],
+                },
+            )
+            if resp.status_code == 200:
+                return resp.json()["choices"][0]["message"]["content"]
+    # Fallback to OpenRouter with vision model
     async with httpx.AsyncClient(timeout=60) as client:
         resp = await client.post(
-            NEBIUS_API_URL,
-            headers={"Authorization": f"Bearer {NEBIUS_API_KEY}"},
+            "https://openrouter.ai/api/v1/chat/completions",
+            headers={"Authorization": f"Bearer {OPENROUTER_API_KEY}"},
             json={
-                "model": "Qwen/Qwen2-VL-72B-Instruct",
+                "model": "anthropic/claude-sonnet-4",
                 "max_tokens": 2048,
-                "messages": [
-                    {
-                        "role": "user",
-                        "content": [
-                            {
-                                "type": "image_url",
-                                "image_url": {
-                                    "url": f"data:image/jpeg;base64,{image_b64}"
-                                },
-                            },
-                            {"type": "text", "text": prompt},
-                        ],
-                    }
-                ],
+                "messages": [{"role": "user", "content": [
+                    {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{image_b64}"}},
+                    {"type": "text", "text": prompt},
+                ]}],
             },
         )
         if resp.status_code != 200:
-            raise RuntimeError(f"Nebius Vision API error {resp.status_code}: {resp.text}")
-        data = resp.json()
-        return data["choices"][0]["message"]["content"]
+            raise RuntimeError(f"Vision API error {resp.status_code}: {resp.text}")
+        return resp.json()["choices"][0]["message"]["content"]
 
 
 async def _openrouter_llm_call(system: str, user: str, max_tokens: int = 2048) -> str:

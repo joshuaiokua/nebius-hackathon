@@ -1,6 +1,6 @@
 import json
 
-from agent.planner import nebius_llm_call
+from agent.planner import llm_call as nebius_llm_call
 
 
 class PlannerAgent:
