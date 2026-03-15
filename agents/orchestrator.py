@@ -8,6 +8,8 @@ If approved, EXECUTOR sends joint commands to the sim.
 import asyncio
 import json
 import re
+from collections.abc import Callable, Coroutine
+from typing import Any
 
 from agents.scout import ScoutAgent
 from agents.planner import PlannerAgent
@@ -15,6 +17,9 @@ from agents.safety import SafetyAgent
 from agents.executor import ExecutorAgent
 from agents.sim_interface import SimInterface
 from agents.scene_builder import SceneBuilder
+
+# Type for event callbacks: async (agent_name, message, metadata) -> None
+EventCallback = Callable[[str, str, dict[str, Any]], Coroutine[Any, Any, None]]
 
 # ANSI colors for demo output
 C_SCOUT = "\033[96m"   # cyan
@@ -63,6 +68,20 @@ class AsyncOrchestrator:
         self._results: list[dict] = []
         self._task_complete = False
 
+        # Event callback — set per-command via command(..., on_event=...)
+        self._on_event: EventCallback | None = None
+
+    async def _emit(self, agent: str, message: str, metadata: dict | None = None) -> None:
+        """Log to console AND fire the event callback if set."""
+        color_map = {
+            "SCOUT": C_SCOUT, "PLANNER": C_PLAN, "SAFETY": C_SAFE,
+            "EXECUTOR": C_EXEC, "ORCHESTRATOR": C_ORCH, "SCENE": C_ORCH,
+            "COMMAND": C_CMD, "ERROR": C_ERR,
+        }
+        _label(color_map.get(agent, C_RST), agent, message)
+        if self._on_event:
+            await self._on_event(agent, message, metadata or {})
+
     # ------------------------------------------------------------------
     # Scene change detection
     # ------------------------------------------------------------------
@@ -88,9 +107,9 @@ class AsyncOrchestrator:
             self.sim.get_state(),
             self.sim.get_camera_frame(),
         )
-        _label(C_SCOUT, "SCOUT", "Analyzing camera frame...")
+        await self._emit("SCOUT", "Analyzing camera frame...")
         scene = await self.scout.analyze_frame(camera_b64)
-        _label(C_SCOUT, "SCOUT", f"Scene: {scene[:120]}...")
+        await self._emit("SCOUT", f"Scene: {scene[:120]}...")
         return scene, state
 
     async def _plan_and_evaluate(
@@ -98,20 +117,21 @@ class AsyncOrchestrator:
     ) -> tuple[dict, dict]:
         """Run PLANNER then SAFETY+next-SCOUT concurrently (pipeline parallel)."""
         # PLANNER generates action plan
-        _label(C_PLAN, "PLANNER", "Generating action plan...")
+        await self._emit("PLANNER", "Generating action plan...")
         plan = await self.planner.plan(scene, state, task)
-        _label(C_PLAN, "PLANNER", f"Plan: {json.dumps(plan, indent=2)[:200]}...")
+        await self._emit("PLANNER", f"Plan: {json.dumps(plan, indent=2)[:200]}...", {"plan": plan})
 
         # SAFETY evaluates concurrently with a pre-fetch of next SCOUT frame
-        _label(C_SAFE, "SAFETY", "Evaluating plan for risks...")
+        await self._emit("SAFETY", "Evaluating plan for risks...")
         safety_task = self.safety.evaluate(plan, state)
         prefetch_task = self.sim.get_camera_frame()  # warm up next frame
         safety_result, _ = await asyncio.gather(safety_task, prefetch_task)
 
-        _label(
-            C_SAFE, "SAFETY",
+        await self._emit(
+            "SAFETY",
             f"Risk: {safety_result.get('risk_level', '?')} | "
             f"Approved: {safety_result.get('approved', '?')}",
+            {"safety": safety_result},
         )
         return plan, safety_result
 
@@ -119,17 +139,17 @@ class AsyncOrchestrator:
         """Extract first action from plan and send to EXECUTOR."""
         steps = plan.get("steps", [])
         if not steps:
-            _label(C_ERR, "EXECUTOR", "No steps in plan")
+            await self._emit("ERROR", "No steps in plan")
             return None
 
         action_name = steps[0].get("action", "stop")
-        _label(C_EXEC, "EXECUTOR", f"Executing: {action_name}")
+        await self._emit("EXECUTOR", f"Executing: {action_name}")
         result = await self.executor.execute(action_name, state)
 
         if "error" in result:
-            _label(C_ERR, "EXECUTOR", f"Error: {result['error']}")
+            await self._emit("ERROR", f"Execution error: {result['error']}")
         else:
-            _label(C_EXEC, "EXECUTOR", f"Action '{action_name}' sent to sim")
+            await self._emit("EXECUTOR", f"Action '{action_name}' sent to sim")
 
         return result
 
@@ -144,9 +164,9 @@ class AsyncOrchestrator:
             f"Mitigations suggested: {json.dumps(safety_result.get('mitigations', []))}\n"
             f"Revise the plan to address these concerns."
         )
-        _label(C_PLAN, "PLANNER", "Re-planning with safety feedback...")
+        await self._emit("PLANNER", "Re-planning with safety feedback...")
         revised = await self.planner.plan(scene, state, feedback_task)
-        _label(C_PLAN, "PLANNER", f"Revised: {json.dumps(revised, indent=2)[:200]}...")
+        await self._emit("PLANNER", f"Revised: {json.dumps(revised, indent=2)[:200]}...", {"plan": revised})
         return revised
 
     # ------------------------------------------------------------------
@@ -161,9 +181,9 @@ class AsyncOrchestrator:
         Returns:
             Dict with 'prompt', 'mjcf_xml', and sim 'result'.
         """
-        _label(C_ORCH, "SCENE", f"Building: {prompt}")
+        await self._emit("SCENE", f"Building: {prompt}")
         mjcf_xml = await self.scene_builder.build_from_prompt(prompt)
-        _label(C_ORCH, "SCENE", f"Generated {len(mjcf_xml)} chars of MJCF")
+        await self._emit("SCENE", f"Generated {len(mjcf_xml)} chars of MJCF")
 
         result = await self.sim.send_command("inject_scene", {
             "mjcf_xml": mjcf_xml,
@@ -178,7 +198,9 @@ class AsyncOrchestrator:
     # ------------------------------------------------------------------
     # Main entry point — natural language command
     # ------------------------------------------------------------------
-    async def command(self, nl_input: str) -> dict:
+    async def command(
+        self, nl_input: str, on_event: EventCallback | None = None
+    ) -> dict:
         """Execute a natural language command end-to-end.
 
         This is the MAIN ENTRY POINT. Routes to scene building or movement.
@@ -186,18 +208,25 @@ class AsyncOrchestrator:
         Args:
             nl_input: Raw user input, e.g. 'walk forward 2 meters',
                       'build a wall and walk around it', 'wave at me'.
+            on_event: Optional async callback (agent_name, message, metadata)
+                      called each time an agent produces output. Useful for
+                      streaming updates to SSE clients.
 
         Returns:
             Dict with command type, agent outputs, and results.
         """
-        _label(C_CMD, "COMMAND", nl_input)
+        self._on_event = on_event
+        try:
+            await self._emit("COMMAND", nl_input)
 
-        # Check if this is a scene modification
-        if _SCENE_KEYWORDS.search(nl_input):
-            return await self._handle_scene_and_move(nl_input)
+            # Check if this is a scene modification
+            if _SCENE_KEYWORDS.search(nl_input):
+                return await self._handle_scene_and_move(nl_input)
 
-        # It's a movement command — run through the pipeline
-        return await self._handle_movement(nl_input)
+            # It's a movement command — run through the pipeline
+            return await self._handle_movement(nl_input)
+        finally:
+            self._on_event = None
 
     async def _handle_scene_and_move(self, nl_input: str) -> dict:
         """Handle commands that mix scene building and movement.
@@ -213,13 +242,13 @@ class AsyncOrchestrator:
         move_part = parts[1].strip() if len(parts) > 1 else None
 
         # Build the scene
-        _label(C_ORCH, "ORCHESTRATOR", f"Scene modification detected")
+        await self._emit("ORCHESTRATOR", "Scene modification detected")
         scene_result = await self.scene_command(scene_part)
         results["steps"].append({"agent": "SCENE_BUILDER", "result": scene_result})
 
         # If there's a movement part, execute it
         if move_part:
-            _label(C_ORCH, "ORCHESTRATOR", f"Follow-up movement: {move_part}")
+            await self._emit("ORCHESTRATOR", f"Follow-up movement: {move_part}")
             move_result = await self._handle_movement(move_part)
             results["steps"].append({"agent": "MOVEMENT", "result": move_result})
 
@@ -230,25 +259,25 @@ class AsyncOrchestrator:
         state = await self.sim.get_state()
 
         # Get scene context from SCOUT
-        _label(C_SCOUT, "SCOUT", "Getting scene context...")
+        await self._emit("SCOUT", "Getting scene context...")
         camera_b64 = await self.sim.get_camera_frame()
         scene = await self.scout.analyze_frame(camera_b64)
-        _label(C_SCOUT, "SCOUT", f"Scene: {scene[:100]}...")
+        await self._emit("SCOUT", f"Scene: {scene[:100]}...")
 
         # PLANNER generates a plan from the NL input
-        _label(C_PLAN, "PLANNER", "Planning...")
+        await self._emit("PLANNER", "Planning...")
         plan = await self.planner.plan(scene, state, nl_input)
-        _label(C_PLAN, "PLANNER", f"Plan: {json.dumps(plan, indent=2)[:200]}...")
+        await self._emit("PLANNER", f"Plan: {json.dumps(plan, indent=2)[:200]}...", {"plan": plan})
 
         # SAFETY checks the plan
-        _label(C_SAFE, "SAFETY", "Evaluating...")
+        await self._emit("SAFETY", "Evaluating...")
         safety_result = await self.safety.evaluate(plan, state)
         risk = safety_result.get("risk_level", "low").lower()
         approved = safety_result.get("approved", False)
-        _label(C_SAFE, "SAFETY", f"Risk: {risk} | Approved: {approved}")
+        await self._emit("SAFETY", f"Risk: {risk} | Approved: {approved}", {"safety": safety_result})
 
         if risk not in ("low", "medium") or not approved:
-            _label(C_ERR, "SAFETY", f"VETOED — {safety_result.get('concerns', [])}")
+            await self._emit("ERROR", f"VETOED — {safety_result.get('concerns', [])}")
             # Re-plan with safety feedback
             revised = await self._replan_with_feedback(scene, state, nl_input, safety_result)
             # Re-evaluate revised plan
@@ -265,22 +294,22 @@ class AsyncOrchestrator:
             plan = revised
 
         # EXECUTOR — execute all steps in the plan
-        _label(C_ORCH, "ORCHESTRATOR", "APPROVED — executing")
+        await self._emit("ORCHESTRATOR", "APPROVED — executing")
         exec_results = []
         for step in plan.get("steps", []):
             action = step.get("action", nl_input)
-            _label(C_EXEC, "EXECUTOR", f"Executing: {action}")
+            await self._emit("EXECUTOR", f"Executing: {action}")
             result = await self.executor.execute(action, state)
             exec_results.append(result)
             if "error" in result:
-                _label(C_ERR, "EXECUTOR", f"Error: {result['error']}")
+                await self._emit("ERROR", f"Execution error: {result['error']}")
             else:
                 source = result.get("source", "?")
-                _label(C_EXEC, "EXECUTOR", f"Done ({source})")
+                await self._emit("EXECUTOR", f"Done ({source})")
             # Update state after each step
             state = await self.sim.get_state()
 
-        _label(C_ORCH, "ORCHESTRATOR", "Command complete")
+        await self._emit("ORCHESTRATOR", "Command complete")
         return {
             "type": "movement",
             "input": nl_input,
@@ -300,9 +329,9 @@ class AsyncOrchestrator:
         SAFETY run. If approved, EXECUTOR fires. Loop until task_complete
         or max_iterations reached.
         """
-        _label(C_ORCH, "ORCHESTRATOR", f"Starting — task: {task!r}")
-        _label(C_ORCH, "ORCHESTRATOR", f"Max iterations: {max_iterations}, "
-               f"SCOUT interval: {SCOUT_INTERVAL_S}s\n")
+        await self._emit("ORCHESTRATOR", f"Starting — task: {task!r}")
+        await self._emit("ORCHESTRATOR", f"Max iterations: {max_iterations}, "
+               f"SCOUT interval: {SCOUT_INTERVAL_S}s")
 
         self._iteration = 0
         self._results = []
@@ -310,14 +339,14 @@ class AsyncOrchestrator:
 
         while self._iteration < max_iterations and not self._task_complete:
             self._iteration += 1
-            _label(C_ORCH, "ORCHESTRATOR", f"{'='*50}")
-            _label(C_ORCH, "ORCHESTRATOR", f"Tick {self._iteration}/{max_iterations}")
+            await self._emit("ORCHESTRATOR", f"{'='*50}")
+            await self._emit("ORCHESTRATOR", f"Tick {self._iteration}/{max_iterations}")
 
             # --- SCOUT (continuous) ---
             scene, state = await self._scout_analyze()
 
             if not self._scene_changed(self._last_scene, scene):
-                _label(C_SCOUT, "SCOUT", "No significant scene change — waiting...")
+                await self._emit("SCOUT", "No significant scene change — waiting...")
                 self._last_scene = scene
                 await asyncio.sleep(SCOUT_INTERVAL_S)
                 continue
@@ -332,7 +361,7 @@ class AsyncOrchestrator:
 
             if risk in ("low", "medium") and approved:
                 # --- EXECUTOR ---
-                _label(C_ORCH, "ORCHESTRATOR", "Action APPROVED")
+                await self._emit("ORCHESTRATOR", "Action APPROVED")
                 exec_result = await self._execute_action(plan, state)
 
                 self._results.append({
@@ -345,7 +374,7 @@ class AsyncOrchestrator:
                 })
             else:
                 # --- VETO: re-plan ---
-                _label(C_ERR, "ORCHESTRATOR",
+                await self._emit("ERROR",
                        f"VETOED (risk={risk}). Re-planning...")
                 revised = await self._replan_with_feedback(
                     scene, state, task, safety_result
@@ -359,8 +388,8 @@ class AsyncOrchestrator:
                     "safety": safety_result,
                 })
 
-            _label(C_ORCH, "ORCHESTRATOR",
-                   f"Result: {self._results[-1]['status']}\n")
+            await self._emit("ORCHESTRATOR",
+                   f"Result: {self._results[-1]['status']}")
 
             # Pace the loop
             await asyncio.sleep(SCOUT_INTERVAL_S)
@@ -368,7 +397,7 @@ class AsyncOrchestrator:
         # --- Summary ---
         executed = sum(1 for r in self._results if r["status"] == "executed")
         revised = sum(1 for r in self._results if r["status"] == "revised")
-        _label(C_ORCH, "ORCHESTRATOR",
+        await self._emit("ORCHESTRATOR",
                f"Done — {executed} executed, {revised} revised, "
                f"{self._iteration} ticks")
         return self._results

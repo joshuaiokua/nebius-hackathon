@@ -17,6 +17,7 @@ from sse_starlette.sse import EventSourceResponse
 from db import get_part, get_part_full, recommend_for_task, search_parts, init_db, DB_PATH
 from schemas import RobotProfile
 from robot.templates import render_control_panel
+from agents.orchestrator import AsyncOrchestrator
 
 
 # ---------- Session state ----------
@@ -418,6 +419,71 @@ async def _run_task_pipeline(session: RobotSession) -> None:
             content=f"Pipeline error: {e}",
             msg_type="error",
         ))
+
+
+# ---------- Multi-agent orchestrator ----------
+
+_orchestrator = AsyncOrchestrator()
+
+
+class CommandRequest(BaseModel):
+    text: str
+
+
+@app.post("/api/command")
+async def run_command(req: CommandRequest):
+    """Execute a natural language command through the multi-agent orchestrator.
+
+    Routes to SCOUT → PLANNER → SAFETY → EXECUTOR pipeline or scene building
+    depending on the command. Returns the full result when complete.
+    """
+    result = await _orchestrator.command(req.text)
+    return result
+
+
+@app.get("/api/command/stream")
+async def stream_command(request: Request, text: str):
+    """SSE endpoint that streams agent outputs in real-time.
+
+    Connect with EventSource, passing ?text=<command>. Each event contains
+    the agent name, message, and optional metadata as JSON.
+
+    Event format:
+        event: agent
+        data: {"agent": "SCOUT", "message": "...", "metadata": {...}}
+    """
+    queue: asyncio.Queue = asyncio.Queue()
+
+    async def on_event(agent: str, message: str, metadata: dict) -> None:
+        await queue.put({"agent": agent, "message": message, "metadata": metadata})
+
+    async def run_in_background() -> None:
+        try:
+            result = await _orchestrator.command(text, on_event=on_event)
+            await queue.put({"agent": "DONE", "message": "complete", "metadata": result})
+        except Exception as e:
+            await queue.put({"agent": "ERROR", "message": str(e), "metadata": {}})
+
+    # Start the orchestrator in the background
+    task = asyncio.create_task(run_in_background())
+
+    async def generate():
+        while True:
+            if await request.is_disconnected():
+                task.cancel()
+                break
+            try:
+                event = await asyncio.wait_for(queue.get(), timeout=30)
+                yield {
+                    "event": "agent",
+                    "data": json.dumps(event),
+                }
+                if event["agent"] == "DONE":
+                    break
+            except asyncio.TimeoutError:
+                yield {"event": "ping", "data": ""}
+
+    return EventSourceResponse(generate())
 
 
 # ---------- HTML pages ----------
