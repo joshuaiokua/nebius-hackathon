@@ -9,4 +9,5 @@ dependencies = [
     "python-dotenv>=1.0",
     "fastapi>=0.115",
     "uvicorn[standard]>=0.34",
+    "sse-starlette>=3.3.2",
 ]
