@@ -51,3 +51,65 @@
 - If architecture changes, update PLAN.md and CLAUDE.md immediately.
 - Checkpoints: 2:30 PM, 4:00 PM, 5:30 PM.
 - Don't modify files outside your ownership zone without coordinating.
+
+## MuJoCo G1 Simulation Reference
+
+### Setup
+```bash
+pip install mujoco
+git clone https://github.com/google-deepmind/mujoco_menagerie.git
+# G1 model: mujoco_menagerie/unitree_g1/scene.xml
+# MJX version (GPU/JAX): mujoco_menagerie/unitree_g1/scene_mjx.xml
+```
+
+### G1 Specs in MuJoCo
+- 29 DOF (degrees of freedom)
+- `data.qpos` — joint positions (array, length = model.nq)
+- `data.qvel` — joint velocities (array, length = model.nv)
+- `data.ctrl` — control inputs to actuators
+- Position actuators on all joints
+
+### Joint Groups (PD gains from Unitree reference)
+- **Legs (0-11):** Hip KP=150/KD=2, Knee KP=300/KD=4, Ankle KP=40/KD=2
+- **Waist (12-14):** KP=250/KD=5
+- **Arms (15-28):** Shoulders KP=100/KD=2-5, Elbows/Wrists KP=20-40/KD=1-2
+
+### State Extraction Pattern
+```python
+import mujoco
+import numpy as np
+
+model = mujoco.MjModel.from_xml_path("mujoco_menagerie/unitree_g1/scene.xml")
+data = mujoco.MjData(model)
+
+# Step simulation
+mujoco.mj_step(model, data)
+
+# Extract state
+state = {
+    "time": data.time,
+    "qpos": data.qpos.tolist(),        # joint positions
+    "qvel": data.qvel.tolist(),        # joint velocities
+    "position": data.qpos[:3].tolist(), # root xyz
+    "orientation": data.qpos[3:7].tolist(), # root quaternion
+    "velocity": data.qvel[:3].tolist(), # root linear velocity
+    "angular_vel": data.qvel[3:6].tolist(), # root angular velocity
+}
+```
+
+### Offscreen Rendering (headless, for dashboard)
+```python
+renderer = mujoco.Renderer(model, height=480, width=640)
+renderer.update_scene(data)
+frame = renderer.render()  # numpy RGB array
+```
+
+### Actions the Orchestrator Can Command
+- `walk_forward` — drive hip pitch + knee joints
+- `walk_backward` — reverse
+- `turn_left` / `turn_right` — differential hip yaw
+- `stop` / `stand` — neutral joint targets
+- `wave` — right shoulder raise + extend
+- `reach_left` / `reach_right` — arm extension
+
+Each action maps to setting `data.ctrl[joint_indices]` to target positions.
