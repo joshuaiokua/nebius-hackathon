@@ -100,10 +100,9 @@ uvicorn storefront:app --reload --port 8000
 | Inference | Nebius AI Cloud GPU |
 
 ## Team
-
-- **Gary Holmgren** — OpenClaw orchestration, multi-agent architecture, sim integration (CEO, Drover Labs)
-- **Stephen Lantin** — MuJoCo G1 environment, model optimization, safety rollouts
-- **Josh Albano** — Marketplace UI, catalog database, product design
+- **Josh** — Marketplace UI, catalog database, product design
+- **Stephen** — MuJoCo G1 environment, model optimization, rollouts
+- **Gary** — OpenClaw orchestration, multi-agent architecture, sim integration
 
 ## License
 
