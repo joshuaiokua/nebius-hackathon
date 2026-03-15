@@ -18,7 +18,7 @@ async def nebius_llm_call(
     system: str,
     user: str,
     max_tokens: int = 2048,
-    model: str = "Qwen/Qwen3-235B-A22B",
+    model: str = "Qwen/Qwen3-235B-A22B-Instruct-2507",
 ) -> str:
     """Make a single LLM call via Nebius Token Factory.
 
@@ -58,7 +58,7 @@ async def nebius_vision_call(image_b64: str, prompt: str) -> str:
                 NEBIUS_API_URL,
                 headers={"Authorization": f"Bearer {NEBIUS_API_KEY}"},
                 json={
-                    "model": "Qwen/Qwen2-VL-72B-Instruct",
+                    "model": "Qwen/Qwen2.5-VL-72B-Instruct",
                     "max_tokens": 2048,
                     "messages": [{"role": "user", "content": [
                         {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{image_b64}"}},
