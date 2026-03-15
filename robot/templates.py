@@ -710,6 +710,11 @@ function connectSSE() {{
     updateRobotState();
   }});
 
+  es.addEventListener("image", (e) => {{
+    const data = JSON.parse(e.data);
+    addImageMessage(data.metadata);
+  }});
+
   es.addEventListener("plan", (e) => {{
     const data = JSON.parse(e.data);
     addPlanMessage(data.content, data.timestamp);
@@ -795,6 +800,22 @@ function addErrorMessage(content, timestamp) {{
   const div = document.createElement("div");
   div.className = "msg msg-error";
   div.innerHTML = escapeHtml(content);
+  messagesEl.appendChild(div);
+  scrollToBottom();
+}}
+
+function addImageMessage(meta) {{
+  const div = document.createElement("div");
+  div.className = "msg msg-robot";
+  div.style.padding = "6px";
+  div.style.maxWidth = "420px";
+  const img = document.createElement("img");
+  img.src = meta.src;
+  img.alt = meta.alt || "Delivery";
+  img.style.width = "100%";
+  img.style.borderRadius = "8px";
+  img.style.display = "block";
+  div.appendChild(img);
   messagesEl.appendChild(div);
   scrollToBottom();
 }}
@@ -1057,7 +1078,8 @@ taskInput.addEventListener("keydown", (e) => {{
     if (resp.ok) {{
       const state = await resp.json();
       state.messages.forEach(m => {{
-        if (m.msg_type === "status") addStatusMessage(m.content, m.timestamp);
+        if (m.msg_type === "image") addImageMessage(m.metadata);
+        else if (m.msg_type === "status") addStatusMessage(m.content, m.timestamp);
         else if (m.msg_type === "error") addErrorMessage(m.content, m.timestamp);
         else if (m.msg_type === "plan") addPlanMessage(m.content, m.timestamp);
         else addMessage(m.role, m.content, m.timestamp);

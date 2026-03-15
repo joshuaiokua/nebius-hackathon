@@ -98,6 +98,12 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+from fastapi.staticfiles import StaticFiles
+from pathlib import Path as _Path
+_photos_dir = _Path(__file__).resolve().parent.parent / "photos"
+if _photos_dir.exists():
+    app.mount("/photos", StaticFiles(directory=str(_photos_dir)), name="photos")
+
 
 # ---------- SSE stream ----------
 
@@ -330,6 +336,25 @@ async def _run_task_pipeline(session: RobotSession) -> None:
                 ))
                 await asyncio.sleep(1.0)
 
+                # Show delivery photo if available
+                _photo_map = {"locomotion": "legs.png"}
+                photo = _photo_map.get(cap)
+                if photo:
+                    await _emit(sid, Message(
+                        role="robot",
+                        content="",
+                        msg_type="image",
+                        metadata={"src": f"/photos/{photo}", "alt": f"{part['name']} delivered"},
+                    ))
+                    await asyncio.sleep(1.5)
+
+                await _emit(sid, Message(
+                    role="robot",
+                    content=f"Package delivered. Installing {part['name']}...",
+                    msg_type="status",
+                ))
+                await asyncio.sleep(1.0)
+
                 # Get full part data with skill YAML
                 full_part = get_part_full(part["pid"])
                 if full_part and full_part.get("skill_yaml"):
@@ -361,9 +386,10 @@ async def _run_task_pipeline(session: RobotSession) -> None:
 
                             sw_steps = install.get("software", [])
                             if sw_steps:
+                                step_strs = [s if isinstance(s, str) else str(s) for s in sw_steps]
                                 await _emit(sid, Message(
                                     role="robot",
-                                    content=f"Running: {', '.join(sw_steps)}",
+                                    content=f"Running: {', '.join(step_strs)}",
                                     msg_type="status",
                                 ))
                                 await asyncio.sleep(0.8)
