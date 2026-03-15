@@ -38,124 +38,108 @@ JOINT_NAMES = [
 ACTION_TARGETS: dict[str, dict] = {
     "walk_forward": {
         "targets": [
-            # Left leg: hip yaw, roll, pitch, knee, ankle pitch, roll
-            0.0, 0.0, -0.5, 0.8, -0.4, 0.0,
-            # Right leg
-            0.0, 0.0, -0.5, 0.8, -0.4, 0.0,
+            # Left leg: hip pitch/roll/yaw, knee, ankle pitch/roll — slight forward lean
+            -0.3, 0.0, 0.0, 0.6, -0.3, 0.0,
+            # Right leg (symmetric)
+            -0.3, 0.0, 0.0, 0.6, -0.3, 0.0,
             # Waist
             0.0,
-            # Left arm (natural swing)
-            0.3, 0.0, 0.0, -0.3, 0.0,
-            # Right arm
-            -0.3, 0.0, 0.0, -0.3, 0.0,
+            # Arms: gentle counter-swing
+            0.2, 0.0, 0.0, -0.2, 0.0,
+            -0.2, 0.0, 0.0, -0.2, 0.0,
         ],
-        "duration_steps": 150,
+        "duration_steps": 400,
     },
     "walk_backward": {
         "targets": [
-            0.0, 0.0, 0.4, 0.5, -0.2, 0.0,
-            0.0, 0.0, 0.4, 0.5, -0.2, 0.0,
+            0.2, 0.0, 0.0, 0.4, -0.15, 0.0,
+            0.2, 0.0, 0.0, 0.4, -0.15, 0.0,
             0.0,
-            -0.2, 0.0, 0.0, -0.2, 0.0,
-            0.2, 0.0, 0.0, -0.2, 0.0,
+            -0.15, 0.0, 0.0, -0.15, 0.0,
+            0.15, 0.0, 0.0, -0.15, 0.0,
         ],
-        "duration_steps": 150,
+        "duration_steps": 400,
     },
     "turn_left": {
         "targets": [
-            0.15, 0.1, -0.3, 0.4, -0.15, 0.0,
-            -0.15, -0.1, -0.3, 0.4, -0.15, 0.0,
-            -0.4,
+            -0.15, 0.05, 0.1, 0.3, -0.1, 0.0,
+            -0.15, -0.05, -0.1, 0.3, -0.1, 0.0,
+            -0.3,
             0.0, 0.0, 0.0, 0.0, 0.0,
             0.0, 0.0, 0.0, 0.0, 0.0,
         ],
-        "duration_steps": 100,
+        "duration_steps": 300,
     },
     "turn_right": {
         "targets": [
-            -0.15, -0.1, -0.3, 0.4, -0.15, 0.0,
-            0.15, 0.1, -0.3, 0.4, -0.15, 0.0,
-            0.4,
+            -0.15, -0.05, -0.1, 0.3, -0.1, 0.0,
+            -0.15, 0.05, 0.1, 0.3, -0.1, 0.0,
+            0.3,
             0.0, 0.0, 0.0, 0.0, 0.0,
             0.0, 0.0, 0.0, 0.0, 0.0,
         ],
-        "duration_steps": 100,
+        "duration_steps": 300,
     },
     "stop": {
         "targets": list(_ZEROS),
-        "duration_steps": 50,
+        "duration_steps": 200,
     },
     "stand": {
         "targets": list(_ZEROS),
-        "duration_steps": 50,
+        "duration_steps": 200,
     },
     "wave": {
         "targets": [
             *_ZEROS[:13],
-            # Left arm neutral
             0.0, 0.0, 0.0, 0.0, 0.0,
-            # Right arm: shoulder up and out, elbow bent for waving
-            -1.2, -0.5, 0.3, 0.8, 0.0,
+            # Right arm: shoulder up, elbow bent — wave gesture
+            -1.0, -0.3, 0.2, 0.6, 0.0,
         ],
-        "duration_steps": 120,
+        "duration_steps": 300,
     },
     "reach_left": {
         "targets": [
             *_ZEROS[:13],
-            # Left arm extended forward
-            0.8, 0.3, 0.0, -0.4, 0.0,
-            # Right arm neutral
+            0.6, 0.2, 0.0, -0.3, 0.0,
             0.0, 0.0, 0.0, 0.0, 0.0,
         ],
-        "duration_steps": 100,
+        "duration_steps": 300,
     },
     "reach_right": {
         "targets": [
             *_ZEROS[:13],
-            # Left arm neutral
             0.0, 0.0, 0.0, 0.0, 0.0,
-            # Right arm extended forward
-            0.8, -0.3, 0.0, -0.4, 0.0,
+            0.6, -0.2, 0.0, -0.3, 0.0,
         ],
-        "duration_steps": 100,
+        "duration_steps": 300,
     },
 }
 
 _NL_SYSTEM_PROMPT = """\
-You are a G1 humanoid robot controller. Given a movement command and the robot's \
-current joint state, output the target joint positions as a JSON object.
+You are a G1 humanoid robot controller. A PD position controller smoothly \
+interpolates from the current pose to your target pose, so the robot won't \
+collapse. Output conservative target joint positions.
 
 Joint order (23 DOF):
-[left_hip_yaw, left_hip_roll, left_hip_pitch, left_knee, left_ankle_pitch, \
-left_ankle_roll, right_hip_yaw, right_hip_roll, right_hip_pitch, right_knee, \
+[left_hip_pitch, left_hip_roll, left_hip_yaw, left_knee, left_ankle_pitch, \
+left_ankle_roll, right_hip_pitch, right_hip_roll, right_hip_yaw, right_knee, \
 right_ankle_pitch, right_ankle_roll, waist_yaw, left_shoulder_pitch, \
-left_shoulder_roll, left_shoulder_yaw, left_elbow, left_hand, \
+left_shoulder_roll, left_shoulder_yaw, left_elbow, left_wrist, \
 right_shoulder_pitch, right_shoulder_roll, right_shoulder_yaw, right_elbow, \
-right_hand]
+right_wrist]
 
-Joint ranges (radians, approximate):
-- Hip yaw: -0.5 to 0.5
-- Hip roll: -0.5 to 0.5
-- Hip pitch: -1.5 to 1.0
-- Knee: 0.0 to 2.0
-- Ankle pitch: -0.8 to 0.5
-- Ankle roll: -0.3 to 0.3
-- Waist yaw: -1.0 to 1.0
-- Shoulder pitch: -2.0 to 2.0
-- Shoulder roll: -1.5 to 1.5
-- Shoulder yaw: -1.0 to 1.0
-- Elbow: -2.0 to 0.0
-- Hand: -0.5 to 0.5
-
-Guidelines:
-- Walking: hip pitch ~-0.5, knee ~0.8, ankle pitch ~-0.4
-- Arm raise: shoulder pitch ~ -1.5 (up)
-- Keep the robot balanced: leg joints should be symmetric unless intentionally asymmetric
-- Smooth motions: don't exceed 1.5 rad change from current position
+CRITICAL RULES:
+- Standing pose is all zeros. ALWAYS keep legs near zero unless actively walking.
+- Leg joints must be symmetric (left = right) to stay balanced.
+- Walking: hip pitch -0.3, knee 0.6, ankle pitch -0.3 (both legs same).
+- Turning: waist yaw ±0.3, small hip adjustments only.
+- Arms only: leave legs at 0. Shoulder pitch -1.0 = arm up, elbow 0.6 = bent.
+- Max change from current: 0.5 rad per joint. Be conservative.
+- duration_steps: 200-500 (more steps = smoother). Use 300 as default.
 
 Output ONLY a JSON object with:
-- "targets": array of 23 floats (target joint positions in radians)
-- "duration_steps": integer (simulation steps, typically 50-200)
+- "targets": array of 23 floats
+- "duration_steps": integer (200-500)
 
 No explanation, no markdown fences. Just the JSON object."""
 
@@ -203,18 +187,26 @@ class ExecutorAgent:
     def __init__(self, sim: SimInterface) -> None:
         self.sim = sim
 
+    @staticmethod
+    def _clamp_targets(targets: list[float]) -> list[float]:
+        """Safety clamp: keep all joint targets within conservative ranges."""
+        clamped = list(targets[:23]) + [0.0] * max(0, 23 - len(targets))
+        # Leg joints (0-11): clamp to ±0.8 rad max
+        for i in range(12):
+            clamped[i] = max(-0.8, min(0.8, clamped[i]))
+        # Waist (12): clamp to ±0.5
+        clamped[12] = max(-0.5, min(0.5, clamped[12]))
+        # Arm joints (13-22): clamp to ±1.5
+        for i in range(13, 23):
+            clamped[i] = max(-1.5, min(1.5, clamped[i]))
+        return clamped
+
     async def execute(self, action_name: str, sim_state: dict) -> dict:
         """Execute an action by sending joint targets to the simulation.
 
         If action_name matches a preset, use it directly. Otherwise, treat it
         as a natural language command and use the LLM to generate targets.
-
-        Args:
-            action_name: Preset key (e.g. 'walk_forward') or natural language.
-            sim_state: Current simulation state.
-
-        Returns:
-            Dict with 'action', 'targets', 'source', and sim 'result'.
+        All targets are safety-clamped before sending to the sim.
         """
         preset = ACTION_TARGETS.get(action_name)
         if preset is not None:
@@ -222,7 +214,6 @@ class ExecutorAgent:
             duration = preset["duration_steps"]
             source = "preset"
         else:
-            # LLM-based translation for arbitrary commands
             try:
                 llm_result = await nl_to_joint_targets(action_name, sim_state)
                 targets = llm_result["targets"]
@@ -235,6 +226,10 @@ class ExecutorAgent:
                     "available_presets": list(ACTION_TARGETS.keys()),
                 }
 
+        targets = self._clamp_targets(targets)
+        duration = max(200, min(500, duration))
+
+        # Return to standing after each action to prevent drift
         result = await self.sim.send_command(action_name, {
             "targets": targets,
             "duration_steps": duration,

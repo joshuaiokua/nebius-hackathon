@@ -495,10 +495,12 @@ async def sim_frame():
     from fastapi.responses import Response
 
     try:
-        b64 = await _orchestrator.sim.get_camera_frame()
-        import base64
-        img_bytes = base64.b64decode(b64)
-        return Response(content=img_bytes, media_type="image/jpeg")
+        img_bytes = await _orchestrator.sim.get_camera_frame_bytes()
+        return Response(
+            content=img_bytes,
+            media_type="image/jpeg",
+            headers={"Cache-Control": "no-store"},
+        )
     except Exception as e:
         return Response(content=str(e), status_code=500)
 

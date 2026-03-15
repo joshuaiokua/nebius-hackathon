@@ -1,9 +1,9 @@
-"""Simulation interface — real MuJoCo G1 implementation."""
+"""Simulation interface — real MuJoCo G1 with position-controlled actuators."""
 
-import asyncio
 import base64
 import io
 import os
+import threading
 
 import mujoco
 import numpy as np
@@ -16,46 +16,69 @@ _MODEL_PATH = os.path.join(
 
 
 class SimInterface:
-    """Real MuJoCo interface to the Unitree G1 23-DOF simulation."""
+    """Real MuJoCo interface to the Unitree G1 23-DOF simulation.
+
+    The MJCF model uses position actuators with high kp + joint damping,
+    so ctrl[i] = target position in radians. The robot stands at ctrl=0.
+    """
 
     def __init__(self, model_path: str = _MODEL_PATH) -> None:
         self.model_path = model_path
         self.model = mujoco.MjModel.from_xml_path(model_path)
         self.data = mujoco.MjData(self.model)
         self.renderer = mujoco.Renderer(self.model, height=480, width=640)
-        # Step to initial state
-        mujoco.mj_step(self.model, self.data)
+        self._lock = threading.Lock()
+
+        # Frame cache to avoid re-rendering on every poll
+        self._frame_cache: bytes = b""
+        self._frame_dirty = True
+
+        # Stabilize at standing pose
+        self.data.ctrl[:] = 0
+        for _ in range(1000):
+            mujoco.mj_step(self.model, self.data)
 
     async def get_state(self) -> dict:
-        """Return current robot state from the real simulation."""
-        return {
-            "time": float(self.data.time),
-            "qpos": self.data.qpos.tolist(),
-            "qvel": self.data.qvel.tolist(),
-            "position": self.data.qpos[:3].tolist(),
-            "orientation": self.data.qpos[3:7].tolist(),
-            "velocity": self.data.qvel[:3].tolist(),
-            "angular_vel": self.data.qvel[3:6].tolist(),
-            "stability": float(np.clip(1.0 - np.abs(self.data.qvel[3:6]).mean(), 0, 1)),
-            "battery": 85.0,
-            "joint_positions": self.data.qpos[7:].tolist(),
-        }
+        with self._lock:
+            return {
+                "time": float(self.data.time),
+                "qpos": self.data.qpos.tolist(),
+                "qvel": self.data.qvel.tolist(),
+                "position": self.data.qpos[:3].tolist(),
+                "orientation": self.data.qpos[3:7].tolist(),
+                "velocity": self.data.qvel[:3].tolist(),
+                "angular_vel": self.data.qvel[3:6].tolist(),
+                "stability": float(np.clip(
+                    1.0 - np.abs(self.data.qvel[3:6]).mean() * 0.5, 0, 1
+                )),
+                "battery": 85.0,
+                "joint_positions": self.data.qpos[7:7 + self.model.nu].tolist(),
+                "joint_targets": self.data.ctrl[:self.model.nu].tolist(),
+            }
 
-    async def get_camera_frame(self) -> str:
-        """Render the scene offscreen and return as base64 JPEG."""
+    def _render_jpeg(self) -> bytes:
         self.renderer.update_scene(self.data)
         frame = self.renderer.render()
         img = Image.fromarray(frame)
         buf = io.BytesIO()
-        img.save(buf, format="JPEG", quality=70)
-        return base64.b64encode(buf.getvalue()).decode()
+        img.save(buf, format="JPEG", quality=75)
+        return buf.getvalue()
+
+    async def get_camera_frame(self) -> str:
+        with self._lock:
+            if self._frame_dirty:
+                self._frame_cache = self._render_jpeg()
+                self._frame_dirty = False
+            return base64.b64encode(self._frame_cache).decode()
+
+    async def get_camera_frame_bytes(self) -> bytes:
+        with self._lock:
+            if self._frame_dirty:
+                self._frame_cache = self._render_jpeg()
+                self._frame_dirty = False
+            return self._frame_cache
 
     async def send_command(self, action: str, params: dict) -> dict:
-        """Route commands to the appropriate handler.
-
-        - 'inject_scene': delegates to inject_scene_xml()
-        - Everything else: joint control targets → step sim
-        """
         if action == "inject_scene":
             mjcf_xml = params.get("mjcf_xml", "")
             if not mjcf_xml:
@@ -63,19 +86,38 @@ class SimInterface:
             return await self.inject_scene_xml(mjcf_xml)
 
         targets = params.get("targets", [0.0] * self.model.nu)
-        steps = params.get("duration_steps", 100)
-        for _ in range(steps):
-            self.data.ctrl[:len(targets)] = targets
-            mujoco.mj_step(self.model, self.data)
+        duration_steps = params.get("duration_steps", 200)
+        target_arr = np.array(targets[:self.model.nu], dtype=np.float64)
+
+        with self._lock:
+            # Interpolate to target
+            start = self.data.ctrl[:self.model.nu].copy()
+            for i in range(duration_steps):
+                alpha = (i + 1) / duration_steps
+                self.data.ctrl[:self.model.nu] = start + alpha * (target_arr - start)
+                mujoco.mj_step(self.model, self.data)
+
+            # Hold at target briefly to let physics settle
+            for _ in range(100):
+                mujoco.mj_step(self.model, self.data)
+
+            # If robot fell (height < 0.4m), recover to standing
+            if self.data.qpos[2] < 0.4:
+                mujoco.mj_resetData(self.model, self.data)
+                self.data.ctrl[:] = 0
+                for _ in range(1000):
+                    mujoco.mj_step(self.model, self.data)
+
+            self._frame_dirty = True
+
         return {
             "status": "ok",
             "action": action,
-            "steps_executed": steps,
+            "steps_executed": duration_steps,
             "new_state": await self.get_state(),
         }
 
     async def inject_scene_xml(self, mjcf_xml: str) -> dict:
-        """Inject new bodies/geoms into the scene from MJCF XML string."""
         import xml.etree.ElementTree as ET
 
         tree = ET.parse(self.model_path)
@@ -86,16 +128,20 @@ class SimInterface:
         for elem in new_elements:
             worldbody.append(elem)
 
-        # Write temp file next to the original model so relative mesh paths resolve
         model_dir = os.path.dirname(os.path.abspath(self.model_path))
         temp_path = os.path.join(model_dir, "_scene_tmp.xml")
         tree.write(temp_path)
 
         try:
-            self.model = mujoco.MjModel.from_xml_path(temp_path)
-            self.data = mujoco.MjData(self.model)
-            self.renderer = mujoco.Renderer(self.model, height=480, width=640)
-            mujoco.mj_step(self.model, self.data)
+            with self._lock:
+                old_ctrl = self.data.ctrl[:self.model.nu].copy()
+                self.model = mujoco.MjModel.from_xml_path(temp_path)
+                self.data = mujoco.MjData(self.model)
+                self.renderer = mujoco.Renderer(self.model, height=480, width=640)
+                self.data.ctrl[:len(old_ctrl)] = old_ctrl
+                for _ in range(500):
+                    mujoco.mj_step(self.model, self.data)
+                self._frame_dirty = True
         finally:
             os.unlink(temp_path)
 
