@@ -91,7 +91,7 @@ uvicorn storefront:app --reload --port 8000
 | Component | Technology |
 |---|---|
 | Orchestration | OpenClaw multi-agent sessions |
-| Simulation | Isaac Sim / MuJoCo — Unitree G1 |
+| Simulation | MuJoCo — Unitree G1 |
 | Vision Agent | Qwen2-VL-72B via Nebius Token Factory |
 | Planning Agent | Qwen3-235B-A22B via Nebius Token Factory |
 | Catalog Search | Tavily web search + Adafruit API |
@@ -102,7 +102,7 @@ uvicorn storefront:app --reload --port 8000
 ## Team
 
 - **Gary Holmgren** — OpenClaw orchestration, multi-agent architecture, sim integration (CEO, Drover Labs)
-- **Stephen Lantin** — Isaac Sim environment, model optimization, safety rollouts
+- **Stephen Lantin** — MuJoCo G1 environment, model optimization, safety rollouts
 - **Josh Albano** — Marketplace UI, catalog database, product design
 
 ## License

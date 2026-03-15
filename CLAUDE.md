@@ -19,7 +19,7 @@
 
 ## What Needs to Be Built (Gary + Stephen)
 1. **Update schemas to Unitree G1** (currently A1)
-2. **Connect to Isaac Sim / MuJoCo** — real simulation environment for G1
+2. **Connect to MuJoCo** — real simulation environment for G1
 3. **Multi-agent orchestration via OpenClaw** — SCOUT, PLANNER, SAFETY running in parallel
 4. **Wire sim state into the self-expanding loop** — when robot detects a gap, the sim validates whether the new skill actually works
 5. **Nebius Token Factory integration** — switch from OpenRouter to Nebius for inference (Qwen2-VL-72B for vision, Qwen3-235B for planning)
@@ -28,7 +28,7 @@
 
 ### Gary + Stephen (backend/sim/orchestration)
 - `agents/` — OpenClaw multi-agent orchestration (SCOUT, PLANNER, SAFETY)
-- `sim/` — Isaac Sim / MuJoCo G1 environment
+- `sim/` — MuJoCo G1 environment
 - `orchestrator.py` — enhance with multi-agent parallel execution
 - `agent.py` — add Nebius Token Factory, vision model support
 - `schemas.py` — update to G1

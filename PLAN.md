@@ -50,7 +50,7 @@ We run in **parallel**: SCOUT continuously analyzes, PLANNER reasons ahead, SAFE
 | | **Gary + Stephen** | **Josh** |
 |---|---|---|
 | **Background** | Gary: CEO Drover Labs, robotics/autonomy, NASA. Stephen: PhD scientist, hardware/technical | Fullstack dev, marketing/story |
-| **Owns** | OpenClaw orchestration, Isaac Sim env, all agents (SCOUT/PLANNER/SAFETY), sim rollouts, model optimization | Frontend marketplace UI, agent dashboard, DB, pitch deck, demo script, README |
+| **Owns** | OpenClaw orchestration, MuJoCo env, all agents (SCOUT/PLANNER/SAFETY), sim rollouts, model optimization | Frontend marketplace UI, agent dashboard, DB, pitch deck, demo script, README |
 | **Directories** | `agents/`, `sim/`, `orchestrator/` | `frontend/`, `db/`, `README.md` |
 
 ---
@@ -61,11 +61,11 @@ We run in **parallel**: SCOUT continuously analyzes, PLANNER reasons ahead, SAFE
 
 | Gary | Stephen | Josh |
 |---|---|---|
-| Install/configure OpenClaw on local or Nebius VM | Spin up Nebius GPU VM, get Isaac Sim running with G1 model | Scaffold frontend marketplace UI (product landing + dashboard) |
+| Install/configure OpenClaw on local or Nebius VM | Spin up Nebius GPU VM, get MuJoCo running with G1 model | Scaffold frontend marketplace UI (product landing + dashboard) |
 | Define multi-agent workflow: spawn SCOUT, PLANNER, SAFETY as OpenClaw sessions | Set up SSH access for all 3 team members, distribute API keys | Design 4-panel agent dashboard: Scout feed, Planner reasoning, Safety status, Robot view |
-| Get first agent talking to Nebius Token Factory (Qwen3-235B) through OpenClaw | Extract G1 state as JSON from Isaac Sim (position, velocity, orientation, stability) | Draft pitch outline — problem, product vision (marketplace), demo, Drover credibility |
+| Get first agent talking to Nebius Token Factory (Qwen3-235B) through OpenClaw | Extract G1 state as JSON from MuJoCo (position, velocity, orientation, stability) | Draft pitch outline — problem, product vision (marketplace), demo, Drover credibility |
 
-**✅ Checkpoint 2:30:** Isaac Sim G1 running. OpenClaw spawns agents. Josh has dashboard + marketplace skeleton.
+**✅ Checkpoint 2:30:** MuJoCo G1 running. OpenClaw spawns agents. Josh has dashboard + marketplace skeleton.
 
 ---
 
@@ -73,9 +73,9 @@ We run in **parallel**: SCOUT continuously analyzes, PLANNER reasons ahead, SAFE
 
 | Gary | Stephen | Josh |
 |---|---|---|
-| Build orchestrator: SCOUT + SAFETY run continuously, PLANNER triggers on new observations | Build SAFETY agent: fork Isaac Sim state → parallel rollouts with noise → stability score + risk level | Connect dashboard to agents via WebSocket/SSE — live stream each agent's output |
+| Build orchestrator: SCOUT + SAFETY run continuously, PLANNER triggers on new observations | Build SAFETY agent: fork MuJoCo state → parallel rollouts with noise → stability score + risk level | Connect dashboard to agents via WebSocket/SSE — live stream each agent's output |
 | Define decision protocol: PLANNER proposes → SAFETY validates → EXECUTOR fires only if risk < threshold | Build SCOUT: camera frame → Qwen2-VL via Token Factory → scene description. Tune prompts for actionable output | Build marketplace UI — browse agent "skills", plug-and-play modules, product story |
-| Handle conflict resolution: SAFETY vetoes PLANNER → re-plan loop | Add obstacle spawning in Isaac Sim for demo scenarios | Start pitch slides (5 max) — frame as both hackathon demo AND product |
+| Handle conflict resolution: SAFETY vetoes PLANNER → re-plan loop | Add obstacle spawning in MuJoCo for demo scenarios | Start pitch slides (5 max) — frame as both hackathon demo AND product |
 
 **✅ Checkpoint 4:00:** Full loop works E2E. Command → SCOUT sees → PLANNER reasons → SAFETY checks → G1 moves (or re-plans). Dashboard shows it live. Marketplace UI tells the product story.
 
@@ -99,7 +99,7 @@ We run in **parallel**: SCOUT continuously analyzes, PLANNER reasons ahead, SAFE
 - Josh: full dry-run pitch (time it — under 3 minutes)
 - Verify Nebius API keys, WiFi, dashboard URL, marketplace URL
 - Gary: prep judge Q&A — "how vs ROS?", "why OpenClaw?", "latency?", "what's the business model?"
-- Stephen: prep technical deep-dives — Isaac Sim fidelity, rollout physics, VLM accuracy
+- Stephen: prep technical deep-dives — MuJoCo fidelity, rollout physics, VLM accuracy
 
 ---
 
