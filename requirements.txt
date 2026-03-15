@@ -1,0 +1,14 @@
+# Core simulation and rendering
+mujoco>=3.6.0
+Pillow>=10.0.0
+numpy>=2.0.0
+
+# LLM API clients
+httpx>=0.28.0
+
+# Configuration and data
+python-dotenv>=0.21.0
+pyyaml>=6.0.0
+
+# Optional: for running database/catalog features (if needed)
+# tavily-python  # for hardware search
