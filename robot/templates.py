@@ -183,6 +183,16 @@ body {{
   font-size: 13px;
 }}
 
+.msg-warning {{
+  align-self: flex-start;
+  background: var(--warning-bg);
+  border-left: 3px solid var(--warning);
+  border-radius: 4px 12px 12px 4px;
+  color: var(--warning);
+  font-size: 14px;
+  font-weight: 500;
+}}
+
 .msg-error {{
   align-self: flex-start;
   background: var(--danger-bg);
@@ -465,98 +475,16 @@ body {{
   background: var(--accent-bg);
 }}
 
-/* ---------- Agent panels ---------- */
+/* ---------- Sim viewer ---------- */
 
-.agent-dashboard {{
-  display: grid;
-  grid-template-columns: 1.2fr 1fr 1fr;
-  grid-template-rows: 1fr 1fr;
-  gap: 8px;
+.sim-viewer {{
   padding: 12px;
   background: var(--surface);
   border-top: 1px solid var(--border);
-  min-height: 220px;
-  max-height: 340px;
-}}
-
-.sim-panel {{
-  grid-row: 1 / 3;
-}}
-
-.agent-panel {{
-  background: var(--surface-2);
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  padding: 10px;
-  overflow-y: auto;
+  height: 280px;
   display: flex;
   flex-direction: column;
-}}
-
-.agent-panel::-webkit-scrollbar {{ width: 4px; }}
-.agent-panel::-webkit-scrollbar-track {{ background: transparent; }}
-.agent-panel::-webkit-scrollbar-thumb {{ background: var(--border); border-radius: 2px; }}
-
-.agent-panel-header {{
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  margin-bottom: 6px;
   flex-shrink: 0;
-}}
-
-.agent-dot {{
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  flex-shrink: 0;
-}}
-
-.agent-dot.scout {{ background: #22d3ee; }}
-.agent-dot.planner {{ background: #facc15; }}
-.agent-dot.safety {{ background: #4ade80; }}
-.agent-dot.executor {{ background: #60a5fa; }}
-
-.agent-dot.active {{
-  animation: pulse 1s ease infinite;
-}}
-
-@keyframes pulse {{
-  0%, 100% {{ opacity: 1; }}
-  50% {{ opacity: 0.4; }}
-}}
-
-.agent-panel-label {{
-  font-size: 11px;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  font-family: 'JetBrains Mono', monospace;
-}}
-
-.agent-panel-label.scout {{ color: #22d3ee; }}
-.agent-panel-label.planner {{ color: #facc15; }}
-.agent-panel-label.safety {{ color: #4ade80; }}
-.agent-panel-label.executor {{ color: #60a5fa; }}
-
-.agent-log {{
-  flex: 1;
-  font-size: 12px;
-  font-family: 'JetBrains Mono', monospace;
-  color: var(--text-muted);
-  line-height: 1.6;
-  overflow-y: auto;
-  white-space: pre-wrap;
-  word-break: break-word;
-}}
-
-.agent-log .entry {{
-  padding: 2px 0;
-  animation: fadeIn 0.15s ease;
-}}
-
-.agent-log .entry.latest {{
-  color: var(--text);
 }}
 
 /* ---------- Responsive ---------- */
@@ -589,45 +517,14 @@ body {{
              autocomplete="off">
       <button id="send-btn" onclick="sendUnified()">Send</button>
     </div>
-    <div class="agent-dashboard">
-      <div class="agent-panel sim-panel" id="panel-sim">
-        <div class="agent-panel-header">
-          <div class="agent-dot executor" style="background:#a78bfa;"></div>
-          <span class="agent-panel-label" style="color:#a78bfa;">SIM VIEW</span>
-          <span id="sim-fps" style="margin-left:auto; font-size:10px; color:var(--text-dim); font-family:'JetBrains Mono',monospace;"></span>
-        </div>
-        <div style="flex:1; display:flex; align-items:center; justify-content:center; overflow:hidden; background:#000; border-radius:6px;">
-          <img id="sim-camera" src="/api/sim/frame" alt="MuJoCo G1"
-               style="max-width:100%; max-height:100%; object-fit:contain; image-rendering:auto;">
-        </div>
+    <div class="sim-viewer">
+      <div style="display:flex; align-items:center; gap:8px; margin-bottom:8px;">
+        <div style="width:8px; height:8px; border-radius:50%; background:#a78bfa;"></div>
+        <span style="font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.08em; color:#a78bfa; font-family:'JetBrains Mono',monospace;">SIM VIEW</span>
       </div>
-      <div class="agent-panel" id="panel-scout">
-        <div class="agent-panel-header">
-          <div class="agent-dot scout" id="dot-scout"></div>
-          <span class="agent-panel-label scout">SCOUT</span>
-        </div>
-        <div class="agent-log" id="log-scout">Waiting...</div>
-      </div>
-      <div class="agent-panel" id="panel-planner">
-        <div class="agent-panel-header">
-          <div class="agent-dot planner" id="dot-planner"></div>
-          <span class="agent-panel-label planner">PLANNER</span>
-        </div>
-        <div class="agent-log" id="log-planner">Waiting...</div>
-      </div>
-      <div class="agent-panel" id="panel-safety">
-        <div class="agent-panel-header">
-          <div class="agent-dot safety" id="dot-safety"></div>
-          <span class="agent-panel-label safety">SAFETY</span>
-        </div>
-        <div class="agent-log" id="log-safety">Waiting...</div>
-      </div>
-      <div class="agent-panel" id="panel-executor">
-        <div class="agent-panel-header">
-          <div class="agent-dot executor" id="dot-executor"></div>
-          <span class="agent-panel-label executor">EXECUTOR</span>
-        </div>
-        <div class="agent-log" id="log-executor">Waiting...</div>
+      <div style="flex:1; display:flex; align-items:center; justify-content:center; overflow:hidden; background:#000; border-radius:8px;">
+        <img id="sim-camera" src="/api/sim/frame" alt="MuJoCo G1"
+             style="max-width:100%; max-height:100%; object-fit:contain;">
       </div>
     </div>
   </div>
@@ -707,6 +604,13 @@ function connectSSE() {{
     sseRetries = 0;
     const data = JSON.parse(e.data);
     addStatusMessage(data.content, data.timestamp);
+    updateRobotState();
+  }});
+
+  es.addEventListener("warning", (e) => {{
+    sseRetries = 0;
+    const data = JSON.parse(e.data);
+    addWarningMessage(data.content, data.timestamp);
     updateRobotState();
   }});
 
@@ -796,6 +700,20 @@ function addPlanMessage(content, timestamp) {{
   scrollToBottom();
 }}
 
+function addWarningMessage(content, timestamp) {{
+  const div = document.createElement("div");
+  div.className = "msg msg-warning";
+  div.innerHTML = escapeHtml(content);
+  if (timestamp) {{
+    const ts = document.createElement("div");
+    ts.className = "msg-timestamp";
+    ts.textContent = timestamp;
+    div.appendChild(ts);
+  }}
+  messagesEl.appendChild(div);
+  scrollToBottom();
+}}
+
 function addErrorMessage(content, timestamp) {{
   const div = document.createElement("div");
   div.className = "msg msg-error";
@@ -874,10 +792,7 @@ async function sendUnified() {{
 
   taskInput.value = "";
   sendBtn.disabled = true;
-  clearAgentLogs();
-  addMessage("user", task);
 
-  // Send to task pipeline (self-expanding: gap detect → marketplace → install)
   try {{
     const resp = await fetch(`/api/robot/${{SESSION_ID}}/task`, {{
       method: "POST",
@@ -892,34 +807,7 @@ async function sendUnified() {{
   }} catch (e) {{
     addErrorMessage("Connection error: " + e.message);
     sendBtn.disabled = false;
-    return;
   }}
-
-  // Also stream through multi-agent pipeline for the agent dashboard panels
-  const encodedText = encodeURIComponent(task);
-  const es = new EventSource(`/api/command/stream?text=${{encodedText}}`);
-
-  es.addEventListener("agent", (e) => {{
-    try {{
-      const data = JSON.parse(e.data);
-      const agent = data.agent;
-      const msg = data.message;
-
-      if (agent === "DONE" || agent === "ERROR") {{
-        es.close();
-        return;
-      }}
-
-      const panelAgent = agent.toUpperCase();
-      if (agentLogs[panelAgent]) {{
-        appendAgentLog(panelAgent, msg);
-      }}
-    }} catch (err) {{}}
-  }});
-
-  es.onerror = () => {{
-    es.close();
-  }};
 }}
 
 async function respondApproval(pid, approved, rowEl) {{
@@ -994,47 +882,6 @@ function scrollToBottom() {{
   messagesEl.scrollTop = messagesEl.scrollHeight;
 }}
 
-// --- Agent dashboard ---
-
-const agentLogs = {{
-  SCOUT: document.getElementById("log-scout"),
-  PLANNER: document.getElementById("log-planner"),
-  SAFETY: document.getElementById("log-safety"),
-  EXECUTOR: document.getElementById("log-executor"),
-}};
-const agentDots = {{
-  SCOUT: document.getElementById("dot-scout"),
-  PLANNER: document.getElementById("dot-planner"),
-  SAFETY: document.getElementById("dot-safety"),
-  EXECUTOR: document.getElementById("dot-executor"),
-}};
-
-function appendAgentLog(agent, message) {{
-  const logEl = agentLogs[agent];
-  if (!logEl) return;
-
-  // Dim previous entries
-  const prev = logEl.querySelectorAll(".entry.latest");
-  prev.forEach(el => el.classList.remove("latest"));
-
-  const entry = document.createElement("div");
-  entry.className = "entry latest";
-  entry.textContent = message;
-  logEl.appendChild(entry);
-  logEl.scrollTop = logEl.scrollHeight;
-
-  // Activate dot
-  const dot = agentDots[agent];
-  if (dot) {{
-    dot.classList.add("active");
-    setTimeout(() => dot.classList.remove("active"), 2000);
-  }}
-}}
-
-function clearAgentLogs() {{
-  Object.values(agentLogs).forEach(el => {{ el.innerHTML = ""; }});
-}}
-
 // --- Live sim camera feed ---
 
 const simCamera = document.getElementById("sim-camera");
@@ -1079,6 +926,7 @@ taskInput.addEventListener("keydown", (e) => {{
       const state = await resp.json();
       state.messages.forEach(m => {{
         if (m.msg_type === "image") addImageMessage(m.metadata);
+        else if (m.msg_type === "warning") addWarningMessage(m.content, m.timestamp);
         else if (m.msg_type === "status") addStatusMessage(m.content, m.timestamp);
         else if (m.msg_type === "error") addErrorMessage(m.content, m.timestamp);
         else if (m.msg_type === "plan") addPlanMessage(m.content, m.timestamp);

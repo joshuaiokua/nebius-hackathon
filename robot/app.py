@@ -261,9 +261,9 @@ async def _run_task_pipeline(session: RobotSession) -> None:
             await _emit(sid, Message(
                 role="robot",
                 content=desc,
-                msg_type="text",
+                msg_type="warning",
             ))
-            await asyncio.sleep(0.8)
+            await asyncio.sleep(1.5)
 
         # 4. Robot decides to search the marketplace
         await _emit(sid, Message(
@@ -272,7 +272,7 @@ async def _run_task_pipeline(session: RobotSession) -> None:
             msg_type="status",
         ))
         session.status = "searching"
-        await asyncio.sleep(1.0)
+        await asyncio.sleep(2.0)
 
         # 5. Show what was found
         cap_list = gap_names
@@ -353,7 +353,7 @@ async def _run_task_pipeline(session: RobotSession) -> None:
                     content=f"Package delivered. Installing {part['name']}...",
                     msg_type="status",
                 ))
-                await asyncio.sleep(1.0)
+                await asyncio.sleep(2.0)
 
                 # Get full part data with skill YAML
                 full_part = get_part_full(part["pid"])
@@ -382,7 +382,7 @@ async def _run_task_pipeline(session: RobotSession) -> None:
                                     content=f"Physical install: {install['physical']}",
                                     msg_type="status",
                                 ))
-                                await asyncio.sleep(0.5)
+                                await asyncio.sleep(1.5)
 
                             sw_steps = install.get("software", [])
                             if sw_steps:
@@ -392,7 +392,7 @@ async def _run_task_pipeline(session: RobotSession) -> None:
                                     content=f"Running: {', '.join(step_strs)}",
                                     msg_type="status",
                                 ))
-                                await asyncio.sleep(0.8)
+                                await asyncio.sleep(2.0)
 
                             context_update = skill.get("agent_context_update", "").strip()
                             await _emit(sid, Message(
