@@ -450,8 +450,8 @@ async def _run_task_pipeline(session: RobotSession) -> None:
 
             try:
                 from agents.executor import nl_to_velocity, VELOCITY_PRESETS
+                import httpx
 
-                # Try preset first, then LLM
                 task_lower = session.current_task.lower().strip()
                 preset_map = {
                     "walk forward": "walk_forward", "walk": "walk_forward",
@@ -479,16 +479,26 @@ async def _run_task_pipeline(session: RobotSession) -> None:
                     msg_type="status",
                 ))
 
-                result = await _orchestrator.sim.send_command("walk", {
+                # Send to the native MuJoCo viewer (demo.py on port 8765)
+                try:
+                    async with httpx.AsyncClient() as client:
+                        await client.post(
+                            "http://127.0.0.1:8765/cmd",
+                            json={"cmd": cmd, "duration_s": dur},
+                            timeout=5.0,
+                        )
+                except Exception:
+                    pass  # viewer not running, that's fine
+
+                # Also send to headless sim for the web sim view
+                await _orchestrator.sim.send_command("walk", {
                     "cmd": cmd,
                     "duration_s": dur,
                 })
 
-                ns = result.get("new_state", {})
-                pos = ns.get("position", [0, 0, 0])
                 await _emit(sid, Message(
                     role="robot",
-                    content=f"Task complete. Position: x={pos[0]:.1f}m, y={pos[1]:.1f}m",
+                    content=f"Task complete.",
                     msg_type="plan",
                 ))
             except Exception as e:
