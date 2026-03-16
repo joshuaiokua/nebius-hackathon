@@ -49,7 +49,7 @@ Output a JSON object: {"steps": [{"cmd": [vx, vy, yr], "duration_s": float}, ...
 - vx: forward/back speed, -0.5 to 1.0 m/s
 - vy: lateral speed, -0.3 to 0.3 m/s
 - yr: yaw turn rate, -0.8 to 0.8 rad/s (positive = left)
-- duration_s: 0.5 to 6.0 seconds per step
+- duration_s: 0.5 to 15.0 seconds per step
 
 Examples:
 - "walk forward" → {"steps": [{"cmd": [0.5, 0, 0], "duration_s": 3.0}]}
@@ -193,13 +193,15 @@ def run_cmd_server():
 
 
 def input_thread():
+    # Single-letter/word shortcuts only — anything longer goes to the LLM planner
     PRESETS = {
-        "w": ([0.5,0,0], 4.0), "walk": ([0.5,0,0], 4.0),
-        "b": ([-0.3,0,0], 3.0), "back": ([-0.3,0,0], 3.0),
-        "l": ([0,0,0.5], 3.0), "left": ([0,0,0.5], 3.0),
-        "r": ([0,0,-0.5], 3.0), "right": ([0,0,-0.5], 3.0),
-        "s": ([0,0,0], 0.5), "stop": ([0,0,0], 0.5),
+        "w": ([0.5,0,0], 4.0),
+        "b": ([-0.3,0,0], 3.0),
+        "l": ([0,0,0.5], 3.0),
+        "r": ([0,0,-0.5], 3.0),
+        "s": ([0,0,0], 0.5),
         "run": ([1.0,0,0], 4.0),
+        "stop": ([0,0,0], 0.5),
     }
 
     while True:
@@ -256,7 +258,7 @@ def input_thread():
             print(f"  {G}[PLAN]{X} {len(steps)} step(s):")
             for i, step in enumerate(steps):
                 cmd = step["cmd"]
-                dur = max(0.5, min(10.0, float(step.get("duration_s", 3.0))))
+                dur = max(0.5, min(15.0, float(step.get("duration_s", 3.0))))
                 vx = max(-0.5, min(1.0, float(cmd[0])))
                 vy = max(-0.3, min(0.3, float(cmd[1])))
                 yr = max(-0.8, min(0.8, float(cmd[2])))

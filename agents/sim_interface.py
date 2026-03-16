@@ -34,7 +34,7 @@ _NUM_OBS = 47
 _SIM_DT = 0.002
 _CONTROL_DECIMATION = 10
 _RENDER_INTERVAL = 50
-_MAX_CMD_STEPS = 5000  # safety cap: 10 seconds max
+_MAX_CMD_STEPS = 7500  # safety cap: 15 seconds max per step
 
 
 def _gravity_orientation(quat):
