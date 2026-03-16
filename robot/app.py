@@ -438,42 +438,59 @@ async def _run_task_pipeline(session: RobotSession) -> None:
         ))
         await asyncio.sleep(0.5)
 
-        # 8. Actually execute the original task now that we have the hardware
+        # 8. Execute the original task directly — translate NL to velocity, send to sim
         has_locomotion = any("locomotion" in c["id"] for c in session.profile.capabilities)
         if has_locomotion:
             await _emit(sid, Message(
                 role="robot",
-                content=f"Now executing: {session.current_task}",
+                content=f"Executing: {session.current_task}",
                 msg_type="plan",
             ))
             session.status = "executing"
-            await asyncio.sleep(0.5)
 
             try:
-                result = await _orchestrator.command(session.current_task)
-                status = result.get("status", "done")
-                if status == "executed":
-                    execs = result.get("executions", [])
-                    for e in execs:
-                        action = e.get("action", "?")
-                        cmd = e.get("cmd", [])
-                        dur = e.get("duration_s", 0)
-                        await _emit(sid, Message(
-                            role="robot",
-                            content=f"Executing: {action} (cmd={cmd}, {dur}s)",
-                            msg_type="status",
-                        ))
-                    await _emit(sid, Message(
-                        role="robot",
-                        content=f"Task complete: {session.current_task}",
-                        msg_type="plan",
-                    ))
+                from agents.executor import nl_to_velocity, VELOCITY_PRESETS
+
+                # Try preset first, then LLM
+                task_lower = session.current_task.lower().strip()
+                preset_map = {
+                    "walk forward": "walk_forward", "walk": "walk_forward",
+                    "go for a walk": "walk_forward", "run": "run_forward",
+                    "walk backward": "walk_backward", "walk back": "walk_backward",
+                    "turn left": "turn_left", "turn right": "turn_right",
+                    "stop": "stop",
+                }
+                preset_key = None
+                for phrase, key in preset_map.items():
+                    if phrase in task_lower:
+                        preset_key = key
+                        break
+
+                if preset_key and preset_key in VELOCITY_PRESETS:
+                    p = VELOCITY_PRESETS[preset_key]
+                    cmd, dur = p["cmd"], p["duration_s"]
                 else:
-                    await _emit(sid, Message(
-                        role="robot",
-                        content=f"Task finished with status: {status}",
-                        msg_type="status",
-                    ))
+                    vel = await nl_to_velocity(session.current_task)
+                    cmd, dur = vel["cmd"], vel["duration_s"]
+
+                await _emit(sid, Message(
+                    role="robot",
+                    content=f"Walking... (speed={cmd[0]:.1f} m/s, {dur:.0f}s)",
+                    msg_type="status",
+                ))
+
+                result = await _orchestrator.sim.send_command("walk", {
+                    "cmd": cmd,
+                    "duration_s": dur,
+                })
+
+                ns = result.get("new_state", {})
+                pos = ns.get("position", [0, 0, 0])
+                await _emit(sid, Message(
+                    role="robot",
+                    content=f"Task complete. Position: x={pos[0]:.1f}m, y={pos[1]:.1f}m",
+                    msg_type="plan",
+                ))
             except Exception as e:
                 await _emit(sid, Message(
                     role="robot",
