@@ -8,6 +8,7 @@ from contextlib import asynccontextmanager
 from dataclasses import asdict, dataclass, field
 from datetime import datetime
 
+import httpx
 import yaml
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import HTMLResponse
@@ -468,6 +469,14 @@ async def _run_task_pipeline(session: RobotSession) -> None:
                                 msg_type="status",
                                 metadata={"tools": tool_names, "context_update": context_update},
                             ))
+
+                            # Signal the native MuJoCo viewer to swap models
+                            if cap == "locomotion":
+                                try:
+                                    async with httpx.AsyncClient() as client:
+                                        await client.post("http://127.0.0.1:8765/legs", json={}, timeout=3.0)
+                                except Exception:
+                                    pass
                     except Exception as e:
                         await _emit(sid, Message(
                             role="robot",

@@ -1,25 +1,22 @@
 #!/usr/bin/env python3
-"""RoboStore Demo — MuJoCo viewer that accepts commands from CLI and web app.
+"""RoboStore Demo — starts waiting for legs, then launches walking G1 viewer.
 
 Run with:  mjpython demo.py
 
-The viewer listens on localhost:8765 for JSON commands from the web app.
-You can also type commands directly in the terminal.
+Phase 1: Waits for legs to be purchased (via web app or 'legs' command)
+Phase 2: Launches MuJoCo viewer with full RL walking G1
+Phase 3: Accepts walk/turn commands from web app (port 8765) and CLI
 
-Command format (JSON over HTTP):
-  POST http://localhost:8765/cmd
-  {"cmd": [vx, vy, yaw_rate], "duration_s": 3.0}
-
-  POST http://localhost:8765/scene
-  {"mjcf_xml": "<body ...>...</body>"}
+Web app communicates via HTTP:
+  POST /legs  {} — triggers the viewer launch with walking G1
+  POST /cmd   {"cmd": [vx,vy,yr], "duration_s": N} — velocity command
 """
 
-import asyncio
 import json
 import re
 import threading
 import time
-import xml.etree.ElementTree as ET
+import asyncio
 from http.server import HTTPServer, BaseHTTPRequestHandler
 
 import mujoco
@@ -30,7 +27,7 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-MODEL_PATH = "mujoco_sims/unitree_ros/robots/g1_description/scene_rl.xml"
+WALKING_PATH = "mujoco_sims/unitree_ros/robots/g1_description/scene_rl.xml"
 POLICY_PATH = "deploy/g1_policy.pt"
 
 KPS = np.array([100,100,100,150,40,40, 100,100,100,150,40,40], dtype=np.float32)
@@ -47,18 +44,19 @@ R = "\033[91m"; B = "\033[1m"; D = "\033[2m"; X = "\033[0m"
 VELOCITY_PROMPT = """\
 You are a G1 robot controller. Convert the movement command to a velocity.
 Output ONLY JSON: {"cmd": [vx, vy, yaw_rate], "duration_s": float}
-vx: -0.5 to 1.0 m/s. vy: -0.3 to 0.3. yaw_rate: -0.8 to 0.8 rad/s.
+vx: -0.5 to 1.0. vy: -0.3 to 0.3. yaw_rate: -0.8 to 0.8.
 duration_s: 0.5 to 6.0. No explanation. Just JSON."""
 
 
 class Demo:
     def __init__(self):
-        self.model = mujoco.MjModel.from_xml_path(MODEL_PATH)
-        self.data = mujoco.MjData(self.model)
-        self.model.opt.timestep = DT
-        self.policy = torch.jit.load(POLICY_PATH, map_location="cpu")
-        self.policy.eval()
+        self.has_legs = False
+        self.legs_ready = threading.Event()
 
+        # These get initialized when legs arrive
+        self.model = None
+        self.data = None
+        self.policy = None
         self.action = np.zeros(12, dtype=np.float32)
         self.target_dof = DEFAULT_ANGLES.copy()
         self.obs = np.zeros(47, dtype=np.float32)
@@ -66,13 +64,30 @@ class Demo:
         self.cmd = np.array([0.0, 0.0, 0.0], dtype=np.float32)
         self.cmd_steps = 0
 
+    def install_legs(self):
+        if self.has_legs:
+            return
+        print(f"\n  {G}{'='*40}{X}")
+        print(f"  {G}  LEGS INSTALLED — Loading walking model...{X}")
+        print(f"  {G}{'='*40}{X}")
+        self.model = mujoco.MjModel.from_xml_path(WALKING_PATH)
+        self.data = mujoco.MjData(self.model)
+        self.model.opt.timestep = DT
+        self.policy = torch.jit.load(POLICY_PATH, map_location="cpu")
+        self.policy.eval()
+        self.has_legs = True
+        self.legs_ready.set()
+        print(f"  {G}  Launching MuJoCo viewer...{X}\n")
+
     def physics_step(self):
+        if not self.has_legs:
+            return
+
         tau = (self.target_dof - self.data.qpos[7:]) * KPS + (0 - self.data.qvel[6:]) * KDS
         self.data.ctrl[:] = tau
         mujoco.mj_step(self.model, self.data)
         self.step_count += 1
 
-        # Policy always runs (needed for balance), cmd controls movement
         if self.step_count % DECIMATION == 0:
             qj = (self.data.qpos[7:] - DEFAULT_ANGLES) * 1.0
             dqj = self.data.qvel[6:] * 0.05
@@ -94,6 +109,9 @@ class Demo:
                 self.cmd[:] = 0.0
 
     def set_velocity(self, vx, vy, yr, duration_s):
+        if not self.has_legs:
+            print(f"  {R}No legs installed yet{X}")
+            return
         self.cmd[:] = [vx, vy, yr]
         self.cmd_steps = int(duration_s / DT)
         print(f"  {G}[EXEC]{X} cmd=[{vx:.1f}, {vy:.1f}, {yr:.1f}] for {duration_s:.1f}s")
@@ -103,8 +121,6 @@ demo = Demo()
 
 
 class CmdHandler(BaseHTTPRequestHandler):
-    """HTTP handler for commands from the web app."""
-
     def log_message(self, format, *args):
         pass
 
@@ -116,22 +132,10 @@ class CmdHandler(BaseHTTPRequestHandler):
             cmd = body.get("cmd", [0, 0, 0])
             dur = body.get("duration_s", 2.0)
             demo.set_velocity(float(cmd[0]), float(cmd[1]), float(cmd[2]), float(dur))
-            self.send_response(200)
-            self.send_header("Content-Type", "application/json")
-            self.send_header("Access-Control-Allow-Origin", "*")
-            self.end_headers()
-            self.wfile.write(json.dumps({"status": "ok"}).encode())
-
-        elif self.path == "/scene":
-            mjcf = body.get("mjcf_xml", "")
-            if mjcf:
-                print(f"  {M}[SCENE]{X} Injecting: {mjcf[:80]}...")
-            self.send_response(200)
-            self.send_header("Content-Type", "application/json")
-            self.send_header("Access-Control-Allow-Origin", "*")
-            self.end_headers()
-            self.wfile.write(json.dumps({"status": "ok"}).encode())
-
+            self._respond({"status": "ok"})
+        elif self.path == "/legs":
+            demo.install_legs()
+            self._respond({"status": "ok"})
         else:
             self.send_response(404)
             self.end_headers()
@@ -143,21 +147,20 @@ class CmdHandler(BaseHTTPRequestHandler):
         self.send_header("Access-Control-Allow-Headers", "Content-Type")
         self.end_headers()
 
+    def _respond(self, data):
+        self.send_response(200)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Access-Control-Allow-Origin", "*")
+        self.end_headers()
+        self.wfile.write(json.dumps(data).encode())
+
 
 def run_cmd_server():
     server = HTTPServer(("127.0.0.1", 8765), CmdHandler)
-    print(f"  {D}Command server on http://127.0.0.1:8765{X}")
     server.serve_forever()
 
 
 def input_thread():
-    print(f"\n{B}{C}{'='*50}{X}")
-    print(f"{B}{C}  RoboStore Demo — G1 Simulation{X}")
-    print(f"{B}{C}{'='*50}{X}")
-    print(f"{D}Type commands or use the web app (localhost:8001).{X}")
-    print(f"  {G}w{X} = walk  {G}b{X} = back  {G}l{X}/{G}r{X} = turn  {G}s{X} = stop  {G}q{X} = quit")
-    print(f"  {D}Or type natural language (needs NEBIUS_API_KEY){X}\n")
-
     PRESETS = {
         "w": ([0.5,0,0], 4.0), "walk": ([0.5,0,0], 4.0),
         "b": ([-0.3,0,0], 3.0), "back": ([-0.3,0,0], 3.0),
@@ -176,6 +179,13 @@ def input_thread():
             continue
         if text.lower() in ("q", "quit", "exit"):
             import os; os._exit(0)
+        if text.lower() == "legs":
+            demo.install_legs()
+            continue
+
+        if not demo.has_legs:
+            print(f"  {Y}No legs yet. Purchase from web app or type 'legs'{X}")
+            continue
 
         key = text.lower()
         if key in PRESETS:
@@ -183,7 +193,6 @@ def input_thread():
             demo.set_velocity(*vel, dur)
             continue
 
-        # NL → LLM
         try:
             from agent.planner import llm_call
             print(f"  {Y}[LLM]{X} Translating...")
@@ -210,6 +219,17 @@ def main():
     threading.Thread(target=run_cmd_server, daemon=True).start()
     threading.Thread(target=input_thread, daemon=True).start()
 
+    print(f"\n{B}{C}{'='*50}{X}")
+    print(f"{B}{C}  RoboStore Demo{X}")
+    print(f"{B}{C}{'='*50}{X}")
+    print(f"  {D}Command server on http://127.0.0.1:8765{X}")
+    print(f"\n  {Y}G1 has no legs. Waiting for purchase...{X}")
+    print(f"  {D}Use the web app (localhost:8001) or type 'legs'{X}\n")
+
+    # Wait for legs to be installed
+    demo.legs_ready.wait()
+
+    # Now launch the viewer with the walking model
     with mujoco.viewer.launch_passive(demo.model, demo.data) as viewer:
         while viewer.is_running():
             t0 = time.time()
