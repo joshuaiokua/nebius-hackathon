@@ -1,15 +1,15 @@
 #!/usr/bin/env python3
-"""RoboStore Demo — starts with no legs, web app triggers upgrade to walking G1.
+"""RoboStore Demo — starts waiting for legs, then launches walking G1 viewer.
 
 Run with:  mjpython demo.py
 
-Phase 1: Shows G1 torso with no legs on a stand (waiting for hardware)
-Phase 2: After web app purchases legs, switches to full RL walking model
-Phase 3: Accepts walk/turn commands from web app and CLI
+Phase 1: Waits for legs to be purchased (via web app or 'legs' command)
+Phase 2: Launches MuJoCo viewer with full RL walking G1
+Phase 3: Accepts walk/turn commands from web app (port 8765) and CLI
 
-The web app communicates via HTTP on port 8765:
-  POST /cmd   {"cmd": [vx,vy,yr], "duration_s": N}
-  POST /legs  {} — triggers the model swap to walking G1
+Web app communicates via HTTP:
+  POST /legs  {} — triggers the viewer launch with walking G1
+  POST /cmd   {"cmd": [vx,vy,yr], "duration_s": N} — velocity command
 """
 
 import json
@@ -27,7 +27,6 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-NOLEGS_PATH = "mujoco_sims/unitree_ros/robots/g1_description/scene_nolegs.xml"
 WALKING_PATH = "mujoco_sims/unitree_ros/robots/g1_description/scene_rl.xml"
 POLICY_PATH = "deploy/g1_policy.pt"
 
@@ -52,13 +51,12 @@ duration_s: 0.5 to 6.0. No explanation. Just JSON."""
 class Demo:
     def __init__(self):
         self.has_legs = False
-        self.model = mujoco.MjModel.from_xml_path(NOLEGS_PATH)
-        self.data = mujoco.MjData(self.model)
-        self.model.opt.timestep = DT
+        self.legs_ready = threading.Event()
 
-        self.policy = torch.jit.load(POLICY_PATH, map_location="cpu")
-        self.policy.eval()
-
+        # These get initialized when legs arrive
+        self.model = None
+        self.data = None
+        self.policy = None
         self.action = np.zeros(12, dtype=np.float32)
         self.target_dof = DEFAULT_ANGLES.copy()
         self.obs = np.zeros(47, dtype=np.float32)
@@ -66,26 +64,23 @@ class Demo:
         self.cmd = np.array([0.0, 0.0, 0.0], dtype=np.float32)
         self.cmd_steps = 0
 
-        self.swap_to_legs = False  # signal from HTTP handler
-
     def install_legs(self):
-        """Swap to the full walking model."""
-        print(f"\n  {G}[UPGRADE]{X} Installing legs... loading RL walking model")
+        if self.has_legs:
+            return
+        print(f"\n  {G}{'='*40}{X}")
+        print(f"  {G}  LEGS INSTALLED — Loading walking model...{X}")
+        print(f"  {G}{'='*40}{X}")
         self.model = mujoco.MjModel.from_xml_path(WALKING_PATH)
         self.data = mujoco.MjData(self.model)
         self.model.opt.timestep = DT
+        self.policy = torch.jit.load(POLICY_PATH, map_location="cpu")
+        self.policy.eval()
         self.has_legs = True
-        self.step_count = 0
-        self.action[:] = 0
-        self.target_dof[:] = DEFAULT_ANGLES
-        self.cmd[:] = 0
-        self.cmd_steps = 0
-        print(f"  {G}[UPGRADE]{X} Legs installed! G1 is now bipedal.\n")
+        self.legs_ready.set()
+        print(f"  {G}  Launching MuJoCo viewer...{X}\n")
 
     def physics_step(self):
         if not self.has_legs:
-            # No-legs mode: just step physics (torso sits on stand)
-            mujoco.mj_step(self.model, self.data)
             return
 
         tau = (self.target_dof - self.data.qpos[7:]) * KPS + (0 - self.data.qvel[6:]) * KDS
@@ -115,7 +110,7 @@ class Demo:
 
     def set_velocity(self, vx, vy, yr, duration_s):
         if not self.has_legs:
-            print(f"  {R}No legs installed — can't walk{X}")
+            print(f"  {R}No legs installed yet{X}")
             return
         self.cmd[:] = [vx, vy, yr]
         self.cmd_steps = int(duration_s / DT)
@@ -138,11 +133,9 @@ class CmdHandler(BaseHTTPRequestHandler):
             dur = body.get("duration_s", 2.0)
             demo.set_velocity(float(cmd[0]), float(cmd[1]), float(cmd[2]), float(dur))
             self._respond({"status": "ok"})
-
         elif self.path == "/legs":
-            demo.swap_to_legs = True
-            self._respond({"status": "ok", "message": "legs install triggered"})
-
+            demo.install_legs()
+            self._respond({"status": "ok"})
         else:
             self.send_response(404)
             self.end_headers()
@@ -164,18 +157,10 @@ class CmdHandler(BaseHTTPRequestHandler):
 
 def run_cmd_server():
     server = HTTPServer(("127.0.0.1", 8765), CmdHandler)
-    print(f"  {D}Command server on http://127.0.0.1:8765{X}")
     server.serve_forever()
 
 
 def input_thread():
-    print(f"\n{B}{C}{'='*50}{X}")
-    print(f"{B}{C}  RoboStore Demo{X}")
-    print(f"{B}{C}{'='*50}{X}")
-    print(f"  {Y}G1 has no legs. Use the web app to purchase them.{X}")
-    print(f"  {D}Or type 'legs' to install manually.{X}")
-    print(f"  {D}After legs: w/b/l/r/run/stop or natural language{X}\n")
-
     PRESETS = {
         "w": ([0.5,0,0], 4.0), "walk": ([0.5,0,0], 4.0),
         "b": ([-0.3,0,0], 3.0), "back": ([-0.3,0,0], 3.0),
@@ -195,11 +180,11 @@ def input_thread():
         if text.lower() in ("q", "quit", "exit"):
             import os; os._exit(0)
         if text.lower() == "legs":
-            demo.swap_to_legs = True
+            demo.install_legs()
             continue
 
         if not demo.has_legs:
-            print(f"  {Y}No legs yet — purchase them from the web app or type 'legs'{X}")
+            print(f"  {Y}No legs yet. Purchase from web app or type 'legs'{X}")
             continue
 
         key = text.lower()
@@ -234,24 +219,25 @@ def main():
     threading.Thread(target=run_cmd_server, daemon=True).start()
     threading.Thread(target=input_thread, daemon=True).start()
 
-    while True:
-        with mujoco.viewer.launch_passive(demo.model, demo.data) as viewer:
-            while viewer.is_running():
-                t0 = time.time()
+    print(f"\n{B}{C}{'='*50}{X}")
+    print(f"{B}{C}  RoboStore Demo{X}")
+    print(f"{B}{C}{'='*50}{X}")
+    print(f"  {D}Command server on http://127.0.0.1:8765{X}")
+    print(f"\n  {Y}G1 has no legs. Waiting for purchase...{X}")
+    print(f"  {D}Use the web app (localhost:8001) or type 'legs'{X}\n")
 
-                # Check if we need to swap models
-                if demo.swap_to_legs:
-                    demo.swap_to_legs = False
-                    demo.install_legs()
-                    break  # break to restart viewer with new model
+    # Wait for legs to be installed
+    demo.legs_ready.wait()
 
-                demo.physics_step()
-                viewer.sync()
-                sleep = DT - (time.time() - t0)
-                if sleep > 0:
-                    time.sleep(sleep)
-            else:
-                break  # viewer closed by user
+    # Now launch the viewer with the walking model
+    with mujoco.viewer.launch_passive(demo.model, demo.data) as viewer:
+        while viewer.is_running():
+            t0 = time.time()
+            demo.physics_step()
+            viewer.sync()
+            sleep = DT - (time.time() - t0)
+            if sleep > 0:
+                time.sleep(sleep)
 
 
 if __name__ == "__main__":
