@@ -77,9 +77,14 @@ class SimInterface:
         self._cam.elevation = -20
         self._cam.lookat[:] = [0, 0, 0.8]
 
-        # Init: stabilize standing
+        # Init: run policy briefly at zero velocity to find stable standing pose
+        self._cmd_steps_left = 1000
         for _ in range(1000):
             self._step_physics()
+        self._cmd_steps_left = 0
+        self._cmd[:] = 0.0
+        self._target_dof_pos = self.data.qpos[7:7+12].astype(np.float32).copy()
+        self._action[:] = 0.0
         self._do_render()
 
         # Start background sim

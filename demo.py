@@ -66,6 +66,15 @@ class Demo:
         self.cmd = np.array([0.0, 0.0, 0.0], dtype=np.float32)
         self.cmd_steps = 0
 
+        # Stabilize: run policy briefly at zero velocity to find standing pose
+        self.cmd_steps = 1000
+        for _ in range(1000):
+            self.physics_step()
+        self.cmd_steps = 0
+        self.cmd[:] = 0.0
+        # Freeze at current pose
+        self.target_dof = self.data.qpos[7:7+12].astype(np.float32).copy()
+
     def physics_step(self):
         tau = (self.target_dof - self.data.qpos[7:]) * KPS + (0 - self.data.qvel[6:]) * KDS
         self.data.ctrl[:] = tau
