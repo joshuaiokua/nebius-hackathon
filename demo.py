@@ -236,11 +236,27 @@ def main():
     # Load model on main thread (required for macOS OpenGL)
     demo.install_legs()
 
+    # Run policy for 2s to reach stable standing pose
+    print(f"  {D}Stabilizing...{X}")
+    for _ in range(1000):
+        demo.cmd_steps = 1  # keep policy active during init
+        demo.physics_step()
+    demo.cmd_steps = 0
+    demo.cmd[:] = 0
+    print(f"  {G}Ready. Robot is standing.{X}\n")
+
     # Launch viewer
     with mujoco.viewer.launch_passive(demo.model, demo.data) as viewer:
         while viewer.is_running():
             t0 = time.time()
-            demo.physics_step()
+
+            if demo.cmd_steps > 0:
+                # Active command — run physics with RL policy
+                demo.physics_step()
+            else:
+                # Idle — don't step physics, robot stays frozen in place
+                pass
+
             viewer.sync()
             sleep = DT - (time.time() - t0)
             if sleep > 0:

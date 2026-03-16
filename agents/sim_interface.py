@@ -77,9 +77,12 @@ class SimInterface:
         self._cam.elevation = -20
         self._cam.lookat[:] = [0, 0, 0.8]
 
-        # Stabilize standing
+        # Stabilize: run policy for 2s to reach standing pose, then freeze
+        self._cmd_steps_left = 1000
         for _ in range(1000):
             self._step_physics()
+        self._cmd_steps_left = 0
+        self._cmd[:] = 0.0
         self._do_render()
 
         # Start background sim
@@ -121,24 +124,21 @@ class SimInterface:
     def _loop(self):
         rc = 0
         while self._alive:
-            self._step_physics()
-            rc += 1
-
-            # Render periodically
-            if rc >= _RENDER_INTERVAL:
-                self._do_render()
-                rc = 0
-
-            # Command countdown
             if self._cmd_steps_left > 0:
+                # Active command — run physics with RL policy
+                self._step_physics()
+                rc += 1
+                if rc >= _RENDER_INTERVAL:
+                    self._do_render()
+                    rc = 0
                 self._cmd_steps_left -= 1
                 if self._cmd_steps_left <= 0:
                     self._cmd[:] = 0.0
                     self._do_render()
                     self._cmd_done.set()
             else:
-                # Idle: don't burn 100% CPU
-                time.sleep(0.002)
+                # Idle — don't step physics, robot stays frozen
+                time.sleep(0.01)
 
     # --- Public API (called from async FastAPI handlers) ---
 
