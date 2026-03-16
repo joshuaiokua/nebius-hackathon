@@ -64,7 +64,12 @@ class Demo:
         self.cmd = np.array([0.0, 0.0, 0.0], dtype=np.float32)
         self.cmd_steps = 0
 
+    def request_legs(self):
+        """Signal that legs should be installed (called from any thread)."""
+        self.legs_ready.set()
+
     def install_legs(self):
+        """Actually load the model (must be called from main thread)."""
         if self.has_legs:
             return
         print(f"\n  {G}{'='*40}{X}")
@@ -76,7 +81,6 @@ class Demo:
         self.policy = torch.jit.load(POLICY_PATH, map_location="cpu")
         self.policy.eval()
         self.has_legs = True
-        self.legs_ready.set()
         print(f"  {G}  Launching MuJoCo viewer...{X}\n")
 
     def physics_step(self):
@@ -134,7 +138,7 @@ class CmdHandler(BaseHTTPRequestHandler):
             demo.set_velocity(float(cmd[0]), float(cmd[1]), float(cmd[2]), float(dur))
             self._respond({"status": "ok"})
         elif self.path == "/legs":
-            demo.install_legs()
+            demo.request_legs()
             self._respond({"status": "ok"})
         else:
             self.send_response(404)
@@ -180,7 +184,7 @@ def input_thread():
         if text.lower() in ("q", "quit", "exit"):
             import os; os._exit(0)
         if text.lower() == "legs":
-            demo.install_legs()
+            demo.request_legs()
             continue
 
         if not demo.has_legs:
@@ -226,10 +230,13 @@ def main():
     print(f"\n  {Y}G1 has no legs. Waiting for purchase...{X}")
     print(f"  {D}Use the web app (localhost:8001) or type 'legs'{X}\n")
 
-    # Wait for legs to be installed
+    # Wait for legs signal (from web app or CLI)
     demo.legs_ready.wait()
 
-    # Now launch the viewer with the walking model
+    # Load model on main thread (required for macOS OpenGL)
+    demo.install_legs()
+
+    # Launch viewer
     with mujoco.viewer.launch_passive(demo.model, demo.data) as viewer:
         while viewer.is_running():
             t0 = time.time()
