@@ -42,10 +42,38 @@ C = "\033[96m"; G = "\033[92m"; Y = "\033[93m"; M = "\033[95m"
 R = "\033[91m"; B = "\033[1m"; D = "\033[2m"; X = "\033[0m"
 
 VELOCITY_PROMPT = """\
-You are a G1 robot controller. Convert the movement command to a velocity.
-Output ONLY JSON: {"cmd": [vx, vy, yaw_rate], "duration_s": float}
-vx: -0.5 to 1.0. vy: -0.3 to 0.3. yaw_rate: -0.8 to 0.8.
-duration_s: 0.5 to 6.0. No explanation. Just JSON."""
+You are a G1 humanoid robot motion planner. Convert the movement command into \
+a sequence of velocity steps. Each step has a velocity and duration.
+
+Output a JSON object: {"steps": [{"cmd": [vx, vy, yr], "duration_s": float}, ...]}
+- vx: forward/back speed, -0.5 to 1.0 m/s
+- vy: lateral speed, -0.3 to 0.3 m/s
+- yr: yaw turn rate, -0.8 to 0.8 rad/s (positive = left)
+- duration_s: 0.5 to 6.0 seconds per step
+
+Examples:
+- "walk forward" → {"steps": [{"cmd": [0.5, 0, 0], "duration_s": 3.0}]}
+- "walk in a circle" → {"steps": [{"cmd": [0.4, 0, 0.4], "duration_s": 10.0}]}
+- "walk in a triangle" → {"steps": [
+    {"cmd": [0.5, 0, 0], "duration_s": 3.0},
+    {"cmd": [0, 0, 0.7], "duration_s": 3.0},
+    {"cmd": [0.5, 0, 0], "duration_s": 3.0},
+    {"cmd": [0, 0, 0.7], "duration_s": 3.0},
+    {"cmd": [0.5, 0, 0], "duration_s": 3.0},
+    {"cmd": [0, 0, 0.7], "duration_s": 3.0}
+  ]}
+- "walk forward then turn around and come back" → {"steps": [
+    {"cmd": [0.5, 0, 0], "duration_s": 4.0},
+    {"cmd": [0, 0, 0.8], "duration_s": 4.0},
+    {"cmd": [0.5, 0, 0], "duration_s": 4.0}
+  ]}
+- "do a figure 8" → {"steps": [
+    {"cmd": [0.4, 0, 0.4], "duration_s": 5.0},
+    {"cmd": [0.4, 0, -0.4], "duration_s": 5.0}
+  ]}
+- "spin in place" → {"steps": [{"cmd": [0, 0, 0.8], "duration_s": 8.0}]}
+
+Output ONLY the JSON. No explanation."""
 
 
 class Demo:
@@ -199,22 +227,47 @@ def input_thread():
 
         try:
             from agent.planner import llm_call
-            print(f"  {Y}[LLM]{X} Translating...")
+            print(f"  {Y}[PLAN]{X} Planning motion...")
             loop = asyncio.new_event_loop()
-            raw = loop.run_until_complete(llm_call(VELOCITY_PROMPT, f"Command: {text}", max_tokens=128))
+            raw = loop.run_until_complete(llm_call(VELOCITY_PROMPT, f"Command: {text}", max_tokens=512))
             cleaned = raw.strip()
             for fence in ("```json", "```"):
                 cleaned = cleaned.removeprefix(fence).removesuffix(fence).strip()
-            match = re.search(r'\{[^}]+\}', cleaned)
-            result = json.loads(match.group() if match else cleaned)
-            cmd = result["cmd"]
-            dur = max(0.5, min(6.0, float(result.get("duration_s", 3.0))))
-            demo.set_velocity(
-                max(-0.5, min(1.0, float(cmd[0]))),
-                max(-0.3, min(0.3, float(cmd[1]))),
-                max(-0.8, min(0.8, float(cmd[2]))),
-                dur,
-            )
+
+            # Find the JSON object (may be nested)
+            brace_start = cleaned.find("{")
+            if brace_start >= 0:
+                depth = 0
+                for i, ch in enumerate(cleaned[brace_start:], brace_start):
+                    if ch == "{": depth += 1
+                    elif ch == "}": depth -= 1
+                    if depth == 0:
+                        cleaned = cleaned[brace_start:i+1]
+                        break
+
+            result = json.loads(cleaned)
+
+            # Handle both single command and multi-step plans
+            steps = result.get("steps", None)
+            if steps is None:
+                # Old single-command format
+                steps = [{"cmd": result["cmd"], "duration_s": result.get("duration_s", 3.0)}]
+
+            print(f"  {G}[PLAN]{X} {len(steps)} step(s):")
+            for i, step in enumerate(steps):
+                cmd = step["cmd"]
+                dur = max(0.5, min(10.0, float(step.get("duration_s", 3.0))))
+                vx = max(-0.5, min(1.0, float(cmd[0])))
+                vy = max(-0.3, min(0.3, float(cmd[1])))
+                yr = max(-0.8, min(0.8, float(cmd[2])))
+                print(f"    {i+1}. [{vx:.1f}, {vy:.1f}, {yr:.1f}] for {dur:.1f}s")
+                demo.set_velocity(vx, vy, yr, dur)
+                # Wait for this step to finish before starting the next
+                while demo.cmd_steps > 0:
+                    time.sleep(0.05)
+                time.sleep(0.2)  # brief pause between steps
+
+            print(f"  {G}[DONE]{X} Motion complete")
         except Exception as e:
             print(f"  {R}Error: {e}{X}")
 
