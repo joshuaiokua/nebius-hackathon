@@ -942,7 +942,7 @@ function addPlanMessage(content, timestamp) {{
 
 function addWarningMessage(content, timestamp) {{
   const {{ row, content: contentEl }} = createMsgRow(
-    "warning", "msg-avatar-system", "\u26A0", null
+    "warning", "msg-avatar-system", "\u26a0", null
   );
   contentEl.innerHTML = escapeHtml(content);
   if (timestamp) {{
