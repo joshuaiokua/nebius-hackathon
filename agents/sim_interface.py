@@ -77,14 +77,9 @@ class SimInterface:
         self._cam.elevation = -20
         self._cam.lookat[:] = [0, 0, 0.8]
 
-        # Init: run policy briefly at zero velocity to find stable standing pose
-        self._cmd_steps_left = 1000
+        # Stabilize standing
         for _ in range(1000):
             self._step_physics()
-        self._cmd_steps_left = 0
-        self._cmd[:] = 0.0
-        self._target_dof_pos = self.data.qpos[7:7+12].astype(np.float32).copy()
-        self._action[:] = 0.0
         self._do_render()
 
         # Start background sim
@@ -97,7 +92,7 @@ class SimInterface:
         mujoco.mj_step(self.model, self.data)
         self._step_count += 1
 
-        if self._cmd_steps_left > 0 and self._step_count % _CONTROL_DECIMATION == 0:
+        if self._step_count % _CONTROL_DECIMATION == 0:
             qj = (self.data.qpos[7:] - _DEFAULT_ANGLES) * _DOF_POS_SCALE
             dqj = self.data.qvel[6:] * _DOF_VEL_SCALE
             grav = _gravity_orientation(self.data.qpos[3:7])
@@ -139,8 +134,6 @@ class SimInterface:
                 self._cmd_steps_left -= 1
                 if self._cmd_steps_left <= 0:
                     self._cmd[:] = 0.0
-                    self._action[:] = 0.0
-                    self._target_dof_pos[:] = _DEFAULT_ANGLES
                     self._do_render()
                     self._cmd_done.set()
             else:
