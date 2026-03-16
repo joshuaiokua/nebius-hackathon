@@ -72,25 +72,28 @@ class Demo:
         mujoco.mj_step(self.model, self.data)
         self.step_count += 1
 
-        if self.step_count % DECIMATION == 0:
-            qj = (self.data.qpos[7:] - DEFAULT_ANGLES) * 1.0
-            dqj = self.data.qvel[6:] * 0.05
-            qw, qx, qy, qz = self.data.qpos[3:7]
-            grav = np.array([2*(-qz*qx+qw*qy), -2*(qz*qy+qw*qx), 1-2*(qw*qw+qz*qz)])
-            omega = self.data.qvel[3:6] * 0.25
-            phase = (self.step_count * DT) % 0.8 / 0.8
-            o = self.obs
-            o[:3] = omega; o[3:6] = grav; o[6:9] = self.cmd * CMD_SCALE
-            o[9:21] = qj; o[21:33] = dqj; o[33:45] = self.action
-            o[45:47] = [np.sin(2*np.pi*phase), np.cos(2*np.pi*phase)]
-            with torch.no_grad():
-                self.action = self.policy(torch.from_numpy(o).unsqueeze(0)).numpy().squeeze()
-            self.target_dof = self.action * ACTION_SCALE + DEFAULT_ANGLES
-
+        # Only run RL policy when there's an active command
         if self.cmd_steps > 0:
+            if self.step_count % DECIMATION == 0:
+                qj = (self.data.qpos[7:] - DEFAULT_ANGLES) * 1.0
+                dqj = self.data.qvel[6:] * 0.05
+                qw, qx, qy, qz = self.data.qpos[3:7]
+                grav = np.array([2*(-qz*qx+qw*qy), -2*(qz*qy+qw*qx), 1-2*(qw*qw+qz*qz)])
+                omega = self.data.qvel[3:6] * 0.25
+                phase = (self.step_count * DT) % 0.8 / 0.8
+                o = self.obs
+                o[:3] = omega; o[3:6] = grav; o[6:9] = self.cmd * CMD_SCALE
+                o[9:21] = qj; o[21:33] = dqj; o[33:45] = self.action
+                o[45:47] = [np.sin(2*np.pi*phase), np.cos(2*np.pi*phase)]
+                with torch.no_grad():
+                    self.action = self.policy(torch.from_numpy(o).unsqueeze(0)).numpy().squeeze()
+                self.target_dof = self.action * ACTION_SCALE + DEFAULT_ANGLES
+
             self.cmd_steps -= 1
             if self.cmd_steps <= 0:
                 self.cmd[:] = 0.0
+                self.action[:] = 0.0
+                self.target_dof[:] = DEFAULT_ANGLES
 
     def set_velocity(self, vx, vy, yr, duration_s):
         self.cmd[:] = [vx, vy, yr]
