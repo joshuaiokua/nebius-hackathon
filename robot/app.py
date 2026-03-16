@@ -436,14 +436,57 @@ async def _run_task_pipeline(session: RobotSession) -> None:
             content=f"Setup complete. Capabilities: {', '.join(final_caps)}",
             msg_type="status",
         ))
-        await asyncio.sleep(0.3)
+        await asyncio.sleep(0.5)
 
-        await _emit(sid, Message(
-            role="robot",
-            content=f"Ready to execute: {session.current_task}",
-            msg_type="plan",
-            metadata={"capabilities": final_caps},
-        ))
+        # 8. Actually execute the original task now that we have the hardware
+        has_locomotion = any("locomotion" in c["id"] for c in session.profile.capabilities)
+        if has_locomotion:
+            await _emit(sid, Message(
+                role="robot",
+                content=f"Now executing: {session.current_task}",
+                msg_type="plan",
+            ))
+            session.status = "executing"
+            await asyncio.sleep(0.5)
+
+            try:
+                result = await _orchestrator.command(session.current_task)
+                status = result.get("status", "done")
+                if status == "executed":
+                    execs = result.get("executions", [])
+                    for e in execs:
+                        action = e.get("action", "?")
+                        cmd = e.get("cmd", [])
+                        dur = e.get("duration_s", 0)
+                        await _emit(sid, Message(
+                            role="robot",
+                            content=f"Executing: {action} (cmd={cmd}, {dur}s)",
+                            msg_type="status",
+                        ))
+                    await _emit(sid, Message(
+                        role="robot",
+                        content=f"Task complete: {session.current_task}",
+                        msg_type="plan",
+                    ))
+                else:
+                    await _emit(sid, Message(
+                        role="robot",
+                        content=f"Task finished with status: {status}",
+                        msg_type="status",
+                    ))
+            except Exception as e:
+                await _emit(sid, Message(
+                    role="robot",
+                    content=f"Execution error: {e}",
+                    msg_type="error",
+                ))
+        else:
+            await _emit(sid, Message(
+                role="robot",
+                content=f"Ready to execute: {session.current_task}",
+                msg_type="plan",
+                metadata={"capabilities": final_caps},
+            ))
 
         session.status = "idle"
 
