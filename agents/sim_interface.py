@@ -77,7 +77,7 @@ class SimInterface:
         self._cam.elevation = -20
         self._cam.lookat[:] = [0, 0, 0.8]
 
-        # Init: stabilize standing
+        # Stabilize standing
         for _ in range(1000):
             self._step_physics()
         self._do_render()

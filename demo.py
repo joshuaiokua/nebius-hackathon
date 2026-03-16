@@ -72,6 +72,7 @@ class Demo:
         mujoco.mj_step(self.model, self.data)
         self.step_count += 1
 
+        # Policy always runs (needed for balance), cmd controls movement
         if self.step_count % DECIMATION == 0:
             qj = (self.data.qpos[7:] - DEFAULT_ANGLES) * 1.0
             dqj = self.data.qvel[6:] * 0.05

@@ -240,11 +240,73 @@ async def _run_task_pipeline(session: RobotSession) -> None:
         )
 
         if not recommendations:
-            await _emit(sid, Message(
-                role="robot",
-                content="All required capabilities are already available. Ready to execute.",
-                msg_type="status",
-            ))
+            # Already have everything — execute directly
+            has_locomotion = any(c["id"] in ("locomotion", "g1-bipedal-locomotion")
+                                for c in session.profile.capabilities)
+            if has_locomotion:
+                await _emit(sid, Message(
+                    role="robot",
+                    content=f"Executing: {session.current_task}",
+                    msg_type="plan",
+                ))
+                session.status = "executing"
+                try:
+                    from agents.executor import nl_to_velocity, VELOCITY_PRESETS
+                    import httpx
+
+                    task_lower = session.current_task.lower().strip()
+                    preset_map = {
+                        "walk forward": "walk_forward", "walk": "walk_forward",
+                        "go for a walk": "walk_forward", "run": "run_forward",
+                        "walk backward": "walk_backward", "walk back": "walk_backward",
+                        "turn left": "turn_left", "turn right": "turn_right",
+                        "stop": "stop",
+                    }
+                    preset_key = None
+                    for phrase, key in preset_map.items():
+                        if phrase in task_lower:
+                            preset_key = key
+                            break
+
+                    if preset_key and preset_key in VELOCITY_PRESETS:
+                        p = VELOCITY_PRESETS[preset_key]
+                        cmd, dur = p["cmd"], p["duration_s"]
+                    else:
+                        vel = await nl_to_velocity(session.current_task)
+                        cmd, dur = vel["cmd"], vel["duration_s"]
+
+                    await _emit(sid, Message(
+                        role="robot",
+                        content=f"Walking... (speed={cmd[0]:.1f} m/s, {dur:.0f}s)",
+                        msg_type="status",
+                    ))
+
+                    try:
+                        async with httpx.AsyncClient() as client:
+                            await client.post("http://127.0.0.1:8765/cmd",
+                                              json={"cmd": cmd, "duration_s": dur}, timeout=5.0)
+                    except Exception:
+                        pass
+
+                    await _orchestrator.sim.send_command("walk", {"cmd": cmd, "duration_s": dur})
+
+                    await _emit(sid, Message(
+                        role="robot",
+                        content="Task complete.",
+                        msg_type="plan",
+                    ))
+                except Exception as e:
+                    await _emit(sid, Message(
+                        role="robot",
+                        content=f"Execution error: {e}",
+                        msg_type="error",
+                    ))
+            else:
+                await _emit(sid, Message(
+                    role="robot",
+                    content="All required capabilities are already available. Ready to execute.",
+                    msg_type="status",
+                ))
             session.status = "idle"
             return
 
@@ -365,6 +427,11 @@ async def _run_task_pipeline(session: RobotSession) -> None:
                             session.profile.add_capability({
                                 "id": skill["skill_id"],
                                 "description": f"{skill['hardware']} — tools: {tool_names}",
+                            })
+                            # Also add the raw capability name so gap detection won't retrigger
+                            session.profile.add_capability({
+                                "id": cap,
+                                "description": f"Installed via {part['name']}",
                             })
                             session.installed_parts.append({
                                 "pid": part["pid"],
